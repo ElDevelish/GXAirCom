@@ -230,6 +230,7 @@ public:
   int16_t switchLORA(uint32_t frequency,uint16_t loraBandwidth);
   float get_airlimit(void);
   bool isFskMode(void);
+  void setManchesterEncoding(bool enable);
   
   //int16_t setFrequency(float frequency);
   uint8_t gain = 0; //0 --> auto-gain, 1--> highest gain; 6 --> lowest gain

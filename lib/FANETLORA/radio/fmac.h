@@ -3,10 +3,10 @@
  *
  * Original author: sid (30 Sep 2016)
  * ADS-L M-Band additions: feature/adsl-protocol PR
- *   - MODE_ADSL_8682 / MODE_ADSL_8684 mode defines
- *   - ADSL_TIME timing constant
- *   - rfModeBits.AdslTx / .AdslRx (previously reserved bits b4/b5)
- *   - Fapp::createAdsl() virtual method
+ * - MODE_ADSL_8682 / MODE_ADSL_8684 mode defines
+ * - ADSL_TIME timing constant
+ * - rfModeBits.AdslTx / .AdslRx (previously reserved bits b4/b5)
+ * - Fapp::createAdsl() virtual method
  */
 
 #ifndef FANET_STACK_FMAC_H_
@@ -181,12 +181,12 @@ public:
 
         /**
          * @brief Fill buffer with a complete, ready-to-transmit ADS-L M-Band
-         *        packet (ADSL_PACKET_SIZE = 27 bytes).
+         * packet (ADSL_PACKET_SIZE = 27 bytes).
          *
          * @param buffer      Caller-provided buffer of at least ADSL_PACKET_SIZE.
          * @param freqToggle  false = use 868.2 MHz, true = use 868.4 MHz.
-         *                    Implementer stores this in the struct for the caller
-         *                    to read after the call.
+         * Implementer stores this in the struct for the caller
+         * to read after the call.
          * @return true if data is valid and buffer was filled, false to skip TX.
          *
          * Default implementation returns false (ADS-L disabled unless overridden).

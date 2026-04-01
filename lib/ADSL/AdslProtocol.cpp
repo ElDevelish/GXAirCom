@@ -3,7 +3,7 @@
  * @brief ADS-L SRD860 M-Band protocol encoder / decoder for GXAirCom
  *
  * Reference: EASA ADS-L 4 SRD-860 Issue 1 (20 December 2022),
- *            pjalocha/ogn-tracker ADS-L library (OGN source).
+ * pjalocha/ogn-tracker ADS-L library (OGN source).
  */
 
 #include "AdslProtocol.h"
@@ -15,7 +15,7 @@
 
 /**
  * @brief Write @p bits LSBs of @p value into @p buf starting at bit offset
- *        @p bit_offset (MSB-first, i.e. bit 0 of offset is the MSB of buf[0]).
+ * @p bit_offset (MSB-first, i.e. bit 0 of offset is the MSB of buf[0]).
  */
 static void pack_bits(uint8_t *buf, int bit_offset, int bits, uint32_t value) {
     for (int i = bits - 1; i >= 0; i--) {
@@ -28,7 +28,7 @@ static void pack_bits(uint8_t *buf, int bit_offset, int bits, uint32_t value) {
 
 /**
  * @brief Read @p bits from @p buf starting at bit offset @p bit_offset.
- *        Returns unsigned value (caller casts to signed if needed).
+ * Returns unsigned value (caller casts to signed if needed).
  */
 static uint32_t unpack_bits(const uint8_t *buf, int bit_offset, int bits) {
     uint32_t value = 0;
@@ -123,24 +123,6 @@ adsl_aircraft_category_t adsl_category_from_fanet(uint8_t fanet_type) {
 // ────────────────────────────────────────────────────────────────────────────
 // iConspicuity payload encoder
 // Packs 117 bits into payload[15].  Output buffer must be zeroed first.
-//
-// Bit layout (MSB first within each byte):
-//  [0:5]   Timestamp (6 bit)
-//  [6:7]   Flight State (2 bit)
-//  [8:12]  Aircraft Category (5 bit)
-//  [13:15] Emergency Status (3 bit)
-//  [16:37] Latitude (22 bit signed, LSB = 180/2^21 ≈ 85.8 µdeg)
-//  [38:60] Longitude (23 bit signed, LSB = 360/2^22 ≈ 85.8 µdeg)
-//  [61:74] Altitude WGS84 (14 bit unsigned, 2m steps, offset -512m)
-//  [75:82] Ground Speed (8 bit unsigned, 0.5 m/s steps)
-//  [83:89] Vertical Rate (7 bit signed, 0.5 m/s steps)
-//  [90:98] Ground Track (9 bit unsigned, 360/512 deg/LSB)
-//  [99:100] Source Integrity Level (2 bit)
-//  [101:102] Design Assurance (2 bit)
-//  [103:106] Navigation Integrity (4 bit)
-//  [107:110] H Position Accuracy (4 bit)
-//  [111:113] V Position Accuracy (3 bit)
-//  [114:116] Velocity Accuracy (3 bit)
 // ────────────────────────────────────────────────────────────────────────────
 static void encode_iconspicuity(uint8_t *payload, const adsl_iconspicuity_t *d) {
     memset(payload, 0, ADSL_ICONSPICUITY_SIZE);
@@ -158,61 +140,46 @@ static void encode_iconspicuity(uint8_t *payload, const adsl_iconspicuity_t *d) 
     pack_bits(payload, 13, 3, (uint8_t)d->emergency & 0x07u);
 
     // --- Latitude (22 bit signed) ---
-    // LSB = 180 / 2^21 degrees ≈ 8.58e-5 deg
     int32_t lat_i = (int32_t)roundf(d->latitude * (float)(1 << 21) / 180.0f);
     lat_i = (lat_i < -(1 << 21)) ? -(1 << 21) : lat_i;
     lat_i = (lat_i >  (1 << 21) - 1) ? (1 << 21) - 1 : lat_i;
     pack_bits(payload, 16, 22, (uint32_t)(lat_i & 0x3FFFFFu));
 
     // --- Longitude (23 bit signed) ---
-    // LSB = 360 / 2^22 degrees ≈ 8.58e-5 deg
     int32_t lon_i = (int32_t)roundf(d->longitude * (float)(1 << 22) / 360.0f);
     lon_i = (lon_i < -(1 << 22)) ? -(1 << 22) : lon_i;
     lon_i = (lon_i >  (1 << 22) - 1) ? (1 << 22) - 1 : lon_i;
     pack_bits(payload, 38, 23, (uint32_t)(lon_i & 0x7FFFFFu));
 
     // --- Altitude WGS-84 (14 bit unsigned, 2m steps, offset -512m) ---
-    // value = (alt_m + 512) / 2  →  range: -512 .. +32254 m
     int32_t alt_raw = (int32_t)((d->altitude_wgs84_m + 512.0f) / 2.0f);
     if (alt_raw < 0)        alt_raw = 0;
     if (alt_raw > 0x3FFF)   alt_raw = 0x3FFF;
     pack_bits(payload, 61, 14, (uint32_t)alt_raw);
 
-    // --- Ground Speed (8 bit unsigned, 0.5 m/s steps, max = 127.5 m/s) ---
+    // --- Ground Speed (8 bit unsigned, 0.5 m/s steps) ---
     uint32_t spd_raw = (uint32_t)(d->speed_ms / 0.5f + 0.5f);
     if (spd_raw > 0xFF) spd_raw = 0xFF;
     pack_bits(payload, 75, 8, spd_raw);
 
-    // --- Vertical Rate (7 bit signed, 0.5 m/s steps, range ±31.5 m/s) ---
+    // --- Vertical Rate (7 bit signed, 0.5 m/s steps) ---
     int32_t vr_raw = (int32_t)(d->vertical_rate_ms / 0.5f);
     if (vr_raw < -64) vr_raw = -64;
     if (vr_raw >  63) vr_raw =  63;
     pack_bits(payload, 83, 7, (uint32_t)(vr_raw & 0x7Fu));
 
     // --- Ground Track (9 bit unsigned, 360/512 deg/step) ---
-    // Wrap to [0..360)
     float trk = d->track_deg;
     while (trk <   0.0f) trk += 360.0f;
     while (trk >= 360.0f) trk -= 360.0f;
     uint32_t trk_raw = (uint32_t)(trk * 512.0f / 360.0f + 0.5f) & 0x1FFu;
     pack_bits(payload, 90, 9, trk_raw);
 
-    // --- Source Integrity Level (2 bit) ---
     pack_bits(payload, 99,  2, d->sil & 0x03u);
-
-    // --- Design Assurance (2 bit) ---
     pack_bits(payload, 101, 2, d->design_assurance & 0x03u);
-
-    // --- Navigation Integrity (4 bit) ---
     pack_bits(payload, 103, 4, d->nav_integrity & 0x0Fu);
-
-    // --- Horizontal Position Accuracy (4 bit) ---
     pack_bits(payload, 107, 4, d->h_accuracy & 0x0Fu);
-
-    // --- Vertical Position Accuracy (3 bit) ---
     pack_bits(payload, 111, 3, d->v_accuracy & 0x07u);
-
-    // --- Velocity Accuracy (3 bit) ---
     pack_bits(payload, 114, 3, d->vel_accuracy & 0x07u);
 }
 
@@ -225,25 +192,18 @@ static void decode_iconspicuity(const uint8_t *payload, adsl_iconspicuity_t *d) 
     d->aircraft_category  = (adsl_aircraft_category_t)unpack_bits(payload, 8, 5);
     d->emergency          = (adsl_emergency_t)unpack_bits(payload, 13, 3);
 
-    // Latitude — sign-extend 22-bit
     int32_t lat_i = sign_extend(unpack_bits(payload, 16, 22), 22);
     d->latitude = (float)lat_i * 180.0f / (float)(1 << 21);
 
-    // Longitude — sign-extend 23-bit
     int32_t lon_i = sign_extend(unpack_bits(payload, 38, 23), 23);
     d->longitude = (float)lon_i * 360.0f / (float)(1 << 22);
 
-    // Altitude: value * 2 - 512
     d->altitude_wgs84_m = (float)unpack_bits(payload, 61, 14) * 2.0f - 512.0f;
-
-    // Speed
     d->speed_ms = (float)unpack_bits(payload, 75, 8) * 0.5f;
 
-    // Vertical rate — sign-extend 7-bit
     int32_t vr_i = sign_extend(unpack_bits(payload, 83, 7), 7);
     d->vertical_rate_ms = (float)vr_i * 0.5f;
 
-    // Track
     d->track_deg = (float)unpack_bits(payload, 90, 9) * 360.0f / 512.0f;
 
     d->sil              = (uint8_t)unpack_bits(payload, 99,  2);
@@ -262,46 +222,26 @@ bool adsl_encode_packet(uint8_t *buf, const adsl_iconspicuity_t *data) {
 
     memset(buf, 0, ADSL_PACKET_SIZE);
 
-    // ── Index reference inside buf ──────────────────────────────────────────
-    //  [0]            Length byte
-    //  [1]            Network header (version + flags)
-    //  [2..4]         Network source address
-    //  [5]            Presentation type identifier
-    //  [6..8]         Presentation source address
-    //  [9]            Privacy mode byte
-    //  [10..24]       iConspicuity payload (15 bytes)
-    //  [25..26]       CRC-16
-
     uint32_t addr = data->address & 0x00FFFFFFu;
 
-    // --- Byte 0: Length (covers everything after this byte, excl. CRC) -----
     buf[0] = (uint8_t)(ADSL_NET_HDR_SIZE + ADSL_PRES_HDR_SIZE +
                        ADSL_ICONSPICUITY_SIZE);  // = 24
 
-    // --- Bytes 1..4: Network layer ----------------------------------------
-    // Byte 1: [ProtVer:4][SigFlag:1][KeyIdx:3]
     buf[1] = (uint8_t)((ADSL_PROTOCOL_VERSION << 4) | 0x00u);
-    // Bytes 2..4: address LSB-first
     buf[2] = (uint8_t)(addr & 0xFFu);
     buf[3] = (uint8_t)((addr >> 8)  & 0xFFu);
     buf[4] = (uint8_t)((addr >> 16) & 0xFFu);
 
-    // --- Bytes 5..9: Presentation layer header ----------------------------
     buf[5] = ADSL_PAYLOAD_TYPE_ICONSPICUITY;
     buf[6] = (uint8_t)(addr & 0xFFu);
     buf[7] = (uint8_t)((addr >> 8)  & 0xFFu);
     buf[8] = (uint8_t)((addr >> 16) & 0xFFu);
     buf[9] = data->privacy_mode ? 0x01u : 0x00u;
 
-    // --- Bytes 10..24: iConspicuity payload --------------------------------
     encode_iconspicuity(&buf[10], data);
 
-    // --- Data scrambling (Pres Header + Payload) ---------------------------
-    // Covers buf[ADSL_SCRAMBLE_OFFSET .. ADSL_SCRAMBLE_OFFSET+ADSL_SCRAMBLE_SIZE-1]
-    // = buf[5 .. 24]
     adsl_scramble(&buf[ADSL_SCRAMBLE_OFFSET], ADSL_SCRAMBLE_SIZE, addr);
 
-    // --- CRC-16 over buf[0 .. ADSL_CRC_COVER_SIZE-1] ----------------------
     uint16_t crc = adsl_crc16(buf, ADSL_CRC_COVER_SIZE);
     buf[ADSL_CRC_COVER_SIZE]     = (uint8_t)(crc >> 8);
     buf[ADSL_CRC_COVER_SIZE + 1] = (uint8_t)(crc & 0xFFu);
@@ -316,30 +256,24 @@ bool adsl_decode_packet(const uint8_t *buf, int len, adsl_iconspicuity_t *data) 
     if (!buf || !data) return false;
     if (len < ADSL_PACKET_SIZE) return false;
 
-    // ── CRC check ──────────────────────────────────────────────────────────
     uint16_t crc_calc = adsl_crc16(buf, ADSL_CRC_COVER_SIZE);
     uint16_t crc_recv = ((uint16_t)buf[ADSL_CRC_COVER_SIZE] << 8) |
                                    buf[ADSL_CRC_COVER_SIZE + 1];
     if (crc_calc != crc_recv) return false;
 
-    // ── Decode network layer address ───────────────────────────────────────
     uint32_t addr = (uint32_t)buf[2] |
                     ((uint32_t)buf[3] << 8) |
                     ((uint32_t)buf[4] << 16);
     data->address = addr;
 
-    // ── Descramble (copy to temp buffer to avoid modifying input) ──────────
     uint8_t tmp[ADSL_SCRAMBLE_SIZE];
     memcpy(tmp, &buf[ADSL_SCRAMBLE_OFFSET], ADSL_SCRAMBLE_SIZE);
     adsl_scramble(tmp, ADSL_SCRAMBLE_SIZE, addr);
 
-    // ── Check payload type ─────────────────────────────────────────────────
     if (tmp[0] != ADSL_PAYLOAD_TYPE_ICONSPICUITY) return false;
 
-    // ── Privacy mode ───────────────────────────────────────────────────────
     data->privacy_mode = (tmp[4] & 0x01u) != 0;
 
-    // ── Decode iConspicuity payload (starts at tmp[5]) ─────────────────────
     decode_iconspicuity(&tmp[5], data);
 
     return true;

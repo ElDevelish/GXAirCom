@@ -2,8 +2,8 @@
  * @file FanetLora.cpp
  *
  * ADS-L M-Band additions in feature/adsl-protocol:
- *   - createAdsl(): encode own-aircraft ADS-L iConspicuity packet
- *   - getRxTxCountAdsl(): expose fmac ADS-L TX counter
+ * - createAdsl(): encode own-aircraft ADS-L iConspicuity packet
+ * - getRxTxCountAdsl(): expose fmac ADS-L TX counter
  *
  * All original code is preserved unchanged.
  */
@@ -275,28 +275,28 @@ int16_t FanetLora::getneighbourIndex(uint32_t devId,bool getEmptyEntry){
   int16_t iOldestEntry = -1;
   uint32_t tAct = millis();
   for (int i = 0; i < MAXNEIGHBOURS; i++){
-    if (!neighbours[i].devId){
-      tElapsed = gettimeElapsed(tAct,neighbours[i].tLastMsg);
+    if (!neighbors[i].devId){
+      tElapsed = gettimeElapsed(tAct,neighbors[i].tLastMsg);
       if (tElapsed > tMaxElapsed){
         tMaxElapsed = tElapsed;
         iOldestEntry = i;
       }
     }
-    if (neighbours[i].devId == devId){
+    if (neighbors[i].devId == devId){
       return i; //found entry
     }
 
-    if ((neighbours[i].devId == 0) && (iRet < 0)){
+    if ((neighbors[i].devId == 0) && (iRet < 0)){
       iRet = i; //found empty one
     }
   }
   if (!getEmptyEntry) return -1; //not found in list
   if (iRet >= 0){
-    memset(&neighbours[iRet],0,sizeof(neighbours[iRet])); //clear slot
+    memset(&neighbors[iRet],0,sizeof(neighbors[iRet])); //clear slot
     return iRet; //we give back an empty slot
   }else{
     if (iOldestEntry >= 0){
-      memset(&neighbours[iOldestEntry],0,sizeof(neighbours[iOldestEntry])); //clear slot
+      memset(&neighbors[iOldestEntry],0,sizeof(neighbors[iOldestEntry])); //clear slot
     }
     return iOldestEntry; //we tell the oldest entry to override !! (only if we to much traffic)
   }
@@ -312,8 +312,8 @@ void FanetLora::insertNameToWeather(uint32_t devId, String name){
 void FanetLora::insertNameToNeighbour(uint32_t devId, String name){
   int16_t index = getneighbourIndex(devId,false);
   if (index < 0) return;
-  neighbours[index].tLastMsg = millis();
-  neighbours[index].name = name;
+  neighbors[index].tLastMsg = millis();
+  neighbors[index].name = name;
 }
 
 void FanetLora::insertDataToWeatherStation(uint32_t devId, weatherData *Data){
@@ -327,23 +327,23 @@ void FanetLora::insertDataToWeatherStation(uint32_t devId, weatherData *Data){
 void FanetLora::insertDataToNeighbour(uint32_t devId, trackingData *Data){
   int16_t index = getneighbourIndex(devId,true);
   if (index < 0) return;
-  neighbours[index].devId = devId;
-  neighbours[index].tLastMsg = millis();
+  neighbors[index].devId = devId;
+  neighbors[index].tLastMsg = millis();
   if (Data->aircraftType != 0){
-    neighbours[index].aircraftType = Data->aircraftType;
+    neighbors[index].aircraftType = Data->aircraftType;
   }
-  neighbours[index].lat = Data->lat;
-  neighbours[index].lon = Data->lon;
+  neighbors[index].lat = Data->lat;
+  neighbors[index].lon = Data->lon;
   if (Data->altitude != 0){
-    neighbours[index].altitude = Data->altitude;
+    neighbors[index].altitude = Data->altitude;
   }
-  neighbours[index].speed = Data->speed;
-  neighbours[index].climb = Data->climb;
-  neighbours[index].heading = Data->heading;
-  neighbours[index].rssi = Data->rssi;
-  neighbours[index].type = Data->type;
-  neighbours[index].addressType = Data->addressType;
-  neighbours[index].OnlineTracking = Data->OnlineTracking;
+  neighbors[index].speed = Data->speed;
+  neighbors[index].climb = Data->climb;
+  neighbors[index].heading = Data->heading;
+  neighbors[index].rssi = Data->rssi;
+  neighbors[index].type = Data->type;
+  neighbors[index].addressType = Data->addressType;
+  neighbors[index].OnlineTracking = Data->OnlineTracking;
 }
 
 void FanetLora::clearNeighboursWeather(uint32_t tAct){
@@ -351,9 +351,9 @@ void FanetLora::clearNeighboursWeather(uint32_t tAct){
   if ((tAct - tCheck) >= 5000){ //check only every 5 seconds
     tCheck = tAct;
     for (int i = 0; i < MAXNEIGHBOURS; i++){
-      if (neighbours[i].devId){
-        if ((tCheck - neighbours[i].tLastMsg) >= NEIGHBOURSLIFETIME){ //if we get no msg in 4min --> del neighbour
-          neighbours[i].devId = 0; //clear slot
+      if (neighbors[i].devId){
+        if ((tCheck - neighbors[i].tLastMsg) >= NEIGHBOURSLIFETIME){ //if we get no msg in 4min --> del neighbour
+          neighbors[i].devId = 0; //clear slot
         }
       }
     }
@@ -390,7 +390,7 @@ int16_t FanetLora::getNextNeighbor(uint8_t index){
   for (int i = 0; i < MAXNEIGHBOURS; i++){
     actIndex++;
     if (actIndex >= MAXNEIGHBOURS) actIndex = 0;
-    if (neighbours[actIndex].devId){
+    if (neighbors[actIndex].devId){
       return actIndex;
     }
   }
@@ -400,7 +400,7 @@ int16_t FanetLora::getNextNeighbor(uint8_t index){
 uint8_t FanetLora::getNeighboursCount(void){
   uint8_t countRet = 0;
   for (int i = 0; i < MAXNEIGHBOURS; i++){
-    if (neighbours[i].devId){
+    if (neighbors[i].devId){
       countRet++;
     }
   }
@@ -763,7 +763,7 @@ void FanetLora::getRxTxCountAdsl(uint16_t *pAdslTx) {
 
 void FanetLora::add2ActMsg(String s){
   if (actMsg.length() != 0){
-    actMsg += "\n";
+    actMsg += "\\n";
   }
   actMsg += s;
   newMsg = true;
@@ -1144,8 +1144,8 @@ int16_t FanetLora::getNearestNeighborIndex(){
   float pilotDistance;
   float actDist = 0.0;
   for (int i = 0; i < MAXNEIGHBOURS; i++){
-    if (neighbours[i].devId){
-      pilotDistance = distance(_myData.lat, _myData.lon,neighbours[i].lat,neighbours[i].lon, 'K') * 1000 ;
+    if (neighbors[i].devId){
+      pilotDistance = distance(_myData.lat, _myData.lon,neighbors[i].lat,neighbors[i].lon, 'K') * 1000 ;
       if ((pilotDistance < actDist) || (Ret < 0)){
         actDist = pilotDistance;
         Ret = i;

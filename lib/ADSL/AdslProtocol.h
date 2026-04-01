@@ -6,13 +6,13 @@
  * M-Band: 868.2 / 868.4 MHz, 2-GFSK, 50 kbps net (100 kbps raw w/ Manchester)
  *
  * Packet structure (all bytes after Manchester decode):
- *   [Length 1B][Net Header 4B][Pres Header 5B][iConspicuity 15B][CRC16 2B]
- *   = 27 bytes total on-air (excl. preamble + syncword)
+ * [Length 1B][Net Header 4B][Pres Header 5B][iConspicuity 15B][CRC16 2B]
+ * = 27 bytes total on-air (excl. preamble + syncword)
  *
  * Scrambling: XOR with 24-bit LFSR seeded from source address,
- *             covers Presentation Header + Application Payload (20 bytes).
+ * covers Presentation Header + Application Payload (20 bytes).
  * CRC-16:     Poly 0x1021, Init 0xFFFF (CRC-16/CCITT-FALSE),
- *             over [Length + Net Header + Pres Header + Payload].
+ * over [Length + Net Header + Pres Header + Payload].
  */
 
 #pragma once
@@ -177,7 +177,7 @@ uint16_t adsl_crc16(const uint8_t *data, int len);
 
 /**
  * @brief XOR data with 24-bit LFSR pseudo-random stream derived from address.
- *        Applied in-place.  Covers Presentation Header + Application Payload.
+ * Applied in-place.  Covers Presentation Header + Application Payload.
  *
  * @param buf       Pointer to first scrambled byte (index ADSL_SCRAMBLE_OFFSET).
  * @param len       Number of bytes to scramble (ADSL_SCRAMBLE_SIZE).

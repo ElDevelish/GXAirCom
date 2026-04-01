@@ -1,14 +1,14 @@
 /*
  * mac.cpp
  *
- *  Created on: 30 Sep 2016
- *      Author: sid
+ * Created on: 30 Sep 2016
+ * Author: sid
  *
  * ADS-L M-Band additions — feature/adsl-protocol:
- *   - #include AdslProtocol.h
- *   - switchMode(): MODE_ADSL_8682 / MODE_ADSL_8684 cases
- *   - handleTxAdsl(): new method, transmits one ADS-L packet per 4-second slot
- *   - stateWrapper(): calls fmac.handleTxAdsl() after handleTxLegacy()
+ * - #include AdslProtocol.h
+ * - switchMode(): MODE_ADSL_8682 / MODE_ADSL_8684 cases
+ * - handleTxAdsl(): new method, transmits one ADS-L packet per 4-second slot
+ * - stateWrapper(): calls fmac.handleTxAdsl() after handleTxLegacy()
  */
 
 #include <stdlib.h>
@@ -268,122 +268,140 @@ void FanetMac::frameReceived(int length)
 			char Buffer[500];	
 			int len = 0;	
 			len += sprintf(Buffer+len,"min=%d;max=%d;diff=%d,%d,%d,%d,%d",tmin,tmax,tdiff,tDiff2,tPPS,gtPPS,gtReceived);		
-			len += sprintf(Buffer+len,"\n");
+			len += sprintf(Buffer+len,"\\n");
 			Serial.print(Buffer);
 		}
 		#endif
-    if (num_received != 26){
-			log_e("rx size 26!=%d",num_received);
-			return;
-		}		
-		#if RX_DEBUG > 0
-			static uint32_t tmax = 0;
-			static uint32_t tmin = 1000;
-			uint32_t tPPS = millis()-_ppsMillis;
-			if (tPPS > 400){
-				if (tmin > tPPS) tmin = tPPS;
-			}else{
-				if (tmax < tPPS) tmax = tPPS;
-			}
-			char Buffer[500];	
-			int len = 0;
-      char strftime_buf[64];
-      struct tm timeinfo;      
-			len += sprintf(Buffer+len,"min=%d;max=%d;%d;T=%d;",tmin,tmax,tPPS,tUnix);
-      localtime_r(&tUnix, &timeinfo);
-      strftime(strftime_buf, sizeof(strftime_buf), "%F %T", &timeinfo);   
-			len += sprintf(Buffer+len,"%s;",strftime_buf);
-			len += sprintf(Buffer+len,"F=%d;",fmac.actflarmFreq);
-			len += sprintf(Buffer+len,"Rx=%d;rssi=%d;", num_received, rssi);
-			for(int i=0; i<num_received; i++)
-			{
-				len += sprintf(Buffer+len,"%02X", rx_frame[i]);
-				if (i >= 26) break;
-			}
-			len += sprintf(Buffer+len,"\n");
-			Serial.print(Buffer);
-		#endif
 
-		uint16_t crc16_2 = (uint16_t(rx_frame[24]) << 8) + uint16_t(rx_frame[25]);
-		uint16_t crc16 =  flarm_getCkSum(rx_frame,24);
-		if (crc16 != crc16_2){
+		// ── ADS-L NEU: Rx 27 byte check ─────────────────────────────────────
+		if (num_received == 27 && _RfMode.bits.AdslRx) {
+			adsl_iconspicuity_t adslData;
+			if (adsl_decode_packet(rx_frame, num_received, &adslData)) {
+				frm = new Frame();
+				frm->src.manufacturer = (adslData.address >> 16) & 0xFF;
+				frm->src.id = adslData.address & 0xFFFF;
+				frm->altitude = (int32_t)adslData.altitude_wgs84_m;
+				frm->type = 1; // map to standard tracking
+				frm->AddressType = 2 + 0x80;
+				frm->timeStamp = now();
+				rxFntCount++;
+			} else {
+				return;
+			}
+		} 
+		// ── Legacy FLARM Rx 26 byte check ───────────────────────────────────
+		else if (num_received == 26) {
 			#if RX_DEBUG > 0
-			log_e("%d Flarm: wrong Checksum %04X!=%04X",millis(),crc16,crc16_2);
-			#endif
-			return;
-		}
-
-    ufo_t air={0};
-    ufo_t myAircraft={0};
-    myAircraft.latitude = lat;
-    myAircraft.longitude = lon;
-    myAircraft.geoid_separation = geoidAlt;
-		myAircraft.timestamp = tUnix; 
-		uint8_t newPacket[26];
-		uint32_t tOffset = 0;	
-		bool bOk = false;
-		int i = 0;
-		for(i = 0;i < 5; i++){
-			memcpy(&newPacket[0],&rx_frame[0],26);
-			myAircraft.timestamp = tUnix + tOffset;
-			bOk = flarm_decode(&newPacket[0],&myAircraft,&air);
-			if (bOk){				
-				float dist = distance(myAircraft.latitude,myAircraft.longitude,air.latitude,air.longitude, 'K');
-				if (dist > 100.0){
-					flarm_debugAircraft(&air,&myAircraft);
-					log_e("distance %.1f > 100km --> error ",dist);
-					bOk = false;
+				static uint32_t tmax = 0;
+				static uint32_t tmin = 1000;
+				uint32_t tPPS = millis()-_ppsMillis;
+				if (tPPS > 400){
+					if (tmin > tPPS) tmin = tPPS;
 				}else{
-					break;
+					if (tmax < tPPS) tmax = tPPS;
 				}
+				char Buffer[500];	
+				int len = 0;
+				char strftime_buf[64];
+				struct tm timeinfo;      
+				len += sprintf(Buffer+len,"min=%d;max=%d;%d;T=%d;",tmin,tmax,tPPS,tUnix);
+				localtime_r(&tUnix, &timeinfo);
+				strftime(strftime_buf, sizeof(strftime_buf), "%F %T", &timeinfo);   
+				len += sprintf(Buffer+len,"%s;",strftime_buf);
+				len += sprintf(Buffer+len,"F=%d;",fmac.actflarmFreq);
+				len += sprintf(Buffer+len,"Rx=%d;rssi=%d;", num_received, rssi);
+				for(int i=0; i<num_received; i++)
+				{
+					len += sprintf(Buffer+len,"%02X", rx_frame[i]);
+					if (i >= 26) break;
+				}
+				len += sprintf(Buffer+len,"\\n");
+				Serial.print(Buffer);
+			#endif
+
+			uint16_t crc16_2 = (uint16_t(rx_frame[24]) << 8) + uint16_t(rx_frame[25]);
+			uint16_t crc16 =  flarm_getCkSum(rx_frame,24);
+			if (crc16 != crc16_2){
+				#if RX_DEBUG > 0
+				log_e("%d Flarm: wrong Checksum %04X!=%04X",millis(),crc16,crc16_2);
+				#endif
+				return;
 			}
-			if (i == 0){
-				tOffset = 1;
-			}else if (i == 1){
-				tOffset = -1;
-			}else if (i == 2){
-				tOffset = 2;
-			}else if (i == 3){
-				tOffset = -2;
-			}				
-		}
-		
-		#if RX_DEBUG > 0
-		if ((bOk == true) && (i > 0)){
-			flarm_v7_packet_t *pkt = (flarm_v7_packet_t *)&newPacket[0];
-			log_i("id=%06X,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",pkt->addr,bOk,i,pkt->_unk1,pkt->_unk2,pkt->_unk3,pkt->_unk4,pkt->_unk5,pkt->_unk6,pkt->_unk7,pkt->_unk8,pkt->_unk9,pkt->_unk10);
-		}
-		#endif
-		#ifdef DEBUG_FLARM_RX
-		if (bOk == true){
-			flarm_v7_debugBuffer(&rx_frame[0],&myAircraft);
-		}
-		#endif
-		if (bOk){
-			#ifdef FLARMLOGGER
-			if (fmac.actflarmFreq == 868400000){
-				flarm_debugLog(_ppsMillis,&rx_frame[0],&myAircraft);
+
+			ufo_t air={0};
+			ufo_t myAircraft={0};
+			myAircraft.latitude = lat;
+			myAircraft.longitude = lon;
+			myAircraft.geoid_separation = geoidAlt;
+			myAircraft.timestamp = tUnix; 
+			uint8_t newPacket[26];
+			uint32_t tOffset = 0;	
+			bool bOk = false;
+			int i = 0;
+			for(i = 0;i < 5; i++){
+				memcpy(&newPacket[0],&rx_frame[0],26);
+				myAircraft.timestamp = tUnix + tOffset;
+				bOk = flarm_decode(&newPacket[0],&myAircraft,&air);
+				if (bOk){				
+					float dist = distance(myAircraft.latitude,myAircraft.longitude,air.latitude,air.longitude, 'K');
+					if (dist > 100.0){
+						flarm_debugAircraft(&air,&myAircraft);
+						log_e("distance %.1f > 100km --> error ",dist);
+						bOk = false;
+					}else{
+						break;
+					}
+				}
+				if (i == 0){
+					tOffset = 1;
+				}else if (i == 1){
+					tOffset = -1;
+				}else if (i == 2){
+					tOffset = 2;
+				}else if (i == 3){
+					tOffset = -2;
+				}				
+			}
+			
+			#if RX_DEBUG > 0
+			if ((bOk == true) && (i > 0)){
+				flarm_v7_packet_t *pkt = (flarm_v7_packet_t *)&newPacket[0];
+				log_i("id=%06X,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d",pkt->addr,bOk,i,pkt->_unk1,pkt->_unk2,pkt->_unk3,pkt->_unk4,pkt->_unk5,pkt->_unk6,pkt->_unk7,pkt->_unk8,pkt->_unk9,pkt->_unk10);
 			}
 			#endif
-			frm = new Frame();
-			frm->src.manufacturer = uint8_t(air.addr >> 16);
-			frm->src.id = uint16_t(air.addr & 0x0000FFFF);
-			frm->dest = MacAddr();
-		  frm->altitude = air.altitude;
-			frm->forward = false;
-			if (!air.airborne){
-				frm->type = FRM_TYPE_GROUNDTRACKING_LEGACY;
-				frm->payload_length = serialize_legacyGroundTracking(&air,frm->payload);
+			#ifdef DEBUG_FLARM_RX
+			if (bOk == true){
+				flarm_v7_debugBuffer(&rx_frame[0],&myAircraft);
+			}
+			#endif
+			if (bOk){
+				#ifdef FLARMLOGGER
+				if (fmac.actflarmFreq == 868400000){
+					flarm_debugLog(_ppsMillis,&rx_frame[0],&myAircraft);
+				}
+				#endif
+				frm = new Frame();
+				frm->src.manufacturer = uint8_t(air.addr >> 16);
+				frm->src.id = uint16_t(air.addr & 0x0000FFFF);
+				frm->dest = MacAddr();
+				frm->altitude = air.altitude;
+				frm->forward = false;
+				if (!air.airborne){
+					frm->type = FRM_TYPE_GROUNDTRACKING_LEGACY;
+					frm->payload_length = serialize_legacyGroundTracking(&air,frm->payload);
+				}else{
+					frm->type = FRM_TYPE_TRACKING_LEGACY;
+					frm->payload_length = serialize_legacyTracking(&air,frm->payload);
+				}			
+				frm->AddressType = air.addr_type;
+				frm->legacyAircraftType = air.aircraft_type;
+				frm->timeStamp = tUnix + tOffset;
+				
+				rxLegCount++;
 			}else{
-				frm->type = FRM_TYPE_TRACKING_LEGACY;
-				frm->payload_length = serialize_legacyTracking(&air,frm->payload);
-			}			
-			frm->AddressType = air.addr_type;
-			frm->legacyAircraftType = air.aircraft_type;
-			frm->timeStamp = tUnix + tOffset;
-			
-			rxLegCount++;
-		}else{
+				return;
+			}
+		} else {
 			return;
 		}
   }else{
@@ -533,7 +551,7 @@ void FanetMac::switchMode(uint8_t mode,bool bStartReceive){
 		}else if (mode == MODE_ADSL_8684){
 			len += sprintf(Buffer+len,"ADSL 868.4MHz");
 		}
-		len += sprintf(Buffer+len,"in %dus pps=%d\n",int(micros()-tBegin),int(millis() - _ppsMillis));
+		len += sprintf(Buffer+len,"in %dus pps=%d\\n",int(micros()-tBegin),int(millis() - _ppsMillis));
 		Serial.print(Buffer);
 	}
 	#endif
@@ -638,9 +656,10 @@ void FanetMac::stateWrapper()
 							if (actPPsDiff > 5) actPPsDiff = 3;
 							ppsMillis = fmac._ppsMillis;
 							ppsCount = fmac._ppsCount;
-							fmac.switchMode(MODE_FSK_8682);
+							// ── ADS-L NEU: Rx ──────────────────────────────────
+							fmac.switchMode(fmac._RfMode.bits.AdslRx ? MODE_ADSL_8682 : MODE_FSK_8682);
 							#if RX_DEBUG > 5
-							log_i("**** %d start FSK 868.2 %d %d",millis(),millis() - ppsMillis,fmac._ppsCount);
+							log_i("**** %d start FSK/ADSL 868.2 %d %d",millis(),millis() - ppsMillis,fmac._ppsCount);
 							#endif
 						}
 					}else if (fmac.flarmZone > 0){
@@ -652,14 +671,15 @@ void FanetMac::stateWrapper()
 							fmac.switchMode(MODE_FSK);
 					}
 				}
-			}else if (fmac._actMode == MODE_FSK_8682){
+			}else if (fmac._actMode == MODE_FSK_8682 || fmac._actMode == MODE_ADSL_8682){
 				if ((millis() - ppsMillis) >= (LEGACY_8684_BEGIN - LEGACY_RANGE)){
-					fmac.switchMode(MODE_FSK_8684);
+					// ── ADS-L NEU: Rx ──────────────────────────────────────
+					fmac.switchMode(fmac._RfMode.bits.AdslRx ? MODE_ADSL_8684 : MODE_FSK_8684);
 					#if RX_DEBUG > 5
-					log_i("**** %d start FSK 868.4 %d %d",millis(),millis() - ppsMillis,fmac._ppsCount);
+					log_i("**** %d start FSK/ADSL 868.4 %d %d",millis(),millis() - ppsMillis,fmac._ppsCount);
 					#endif
 				}
-			}else if (fmac._actMode == MODE_FSK_8684){
+			}else if (fmac._actMode == MODE_FSK_8684 || fmac._actMode == MODE_ADSL_8684){
 				if (((millis() - ppsMillis) >= (LEGACY_8684_END + LEGACY_RANGE)) && ((ppsDiff) >= 1)){
 					fmac.switchMode(MODE_LORA);
 					#if RX_DEBUG > 5
@@ -680,22 +700,18 @@ void FanetMac::stateWrapper()
 			}
 		}else if (!fmac._RfMode.bits.FntRx && fmac._RfMode.bits.LegRx){
 			if (fmac.flarmZone == 1){
-				if (fmac._actMode != MODE_FSK_8682){
+				if (fmac._actMode != MODE_FSK_8682 && fmac._actMode != MODE_ADSL_8682){
 						if ((millis() - fmac._ppsMillis) >= (LEGACY_8682_BEGIN - LEGACY_RANGE) && ((ppsDiff) >= 1)){
 							ppsMillis = fmac._ppsMillis;
 							ppsCount = fmac._ppsCount;
-							if (fmac._actMode != MODE_FSK_8682){
-								fmac.switchMode(MODE_FSK_8682);
-							}
+							fmac.switchMode(fmac._RfMode.bits.AdslRx ? MODE_ADSL_8682 : MODE_FSK_8682);
 							#if RX_DEBUG > 5
 							log_i("**** %d start FSK 868.2 %d %d",millis(),millis() - ppsMillis,fmac._ppsCount);
 							#endif
 						}
 				}else{
 					if ((millis() - ppsMillis) >= (LEGACY_8684_BEGIN - LEGACY_RANGE)){
-						if (fmac._actMode != MODE_FSK_8684){
-							fmac.switchMode(MODE_FSK_8684);
-						}	
+						fmac.switchMode(fmac._RfMode.bits.AdslRx ? MODE_ADSL_8684 : MODE_FSK_8684);
 						#if RX_DEBUG > 5
 						log_i("**** %d start FSK 868.4 %d %d",millis(),millis() - ppsMillis,fmac._ppsCount);
 						#endif
@@ -715,12 +731,12 @@ void FanetMac::stateWrapper()
 			if (fmac._RfMode.bits.FntRx && fmac._RfMode.bits.LegRx){
 				if (fmac._actMode == MODE_LORA){
 					if ((tAct - tSwitch) >= 5300){
-						fmac.switchMode(MODE_FSK_8682);
+						fmac.switchMode(fmac._RfMode.bits.AdslRx ? MODE_ADSL_8682 : MODE_FSK_8682);
 						tSwitch = millis();
 					}
-				}else if (fmac._actMode == MODE_FSK_8682){
+				}else if (fmac._actMode == MODE_FSK_8682 || fmac._actMode == MODE_ADSL_8682){
 					if ((tAct - tSwitch) >= 2300){					
-						fmac.switchMode(MODE_FSK_8684);
+						fmac.switchMode(fmac._RfMode.bits.AdslRx ? MODE_ADSL_8684 : MODE_FSK_8684);
 						tSwitch = millis();
 					}
 				}else{
@@ -731,10 +747,10 @@ void FanetMac::stateWrapper()
 				}
 			}else if (!fmac._RfMode.bits.FntRx && fmac._RfMode.bits.LegRx){			
 				if ((tAct - tSwitch) >= 1000){
-					if (fmac._actMode != MODE_FSK_8682){
-						fmac.switchMode(MODE_FSK_8682);
+					if (fmac._actMode != MODE_FSK_8682 && fmac._actMode != MODE_ADSL_8682){
+						fmac.switchMode(fmac._RfMode.bits.AdslRx ? MODE_ADSL_8682 : MODE_FSK_8682);
 					}else{
-						fmac.switchMode(MODE_FSK_8684);
+						fmac.switchMode(fmac._RfMode.bits.AdslRx ? MODE_ADSL_8684 : MODE_FSK_8684);
 					}
 					tSwitch = tAct;
 				}
@@ -983,7 +999,8 @@ void FanetMac::setRegion(float lat, float lon){
 			switchMode(MODE_LORA);
 		}else if (_RfMode.bits.LegRx){
 			if (flarmZone == 1){
-				switchMode(MODE_FSK_8682);
+				// ── ADS-L NEU: Rx logic ──────────────────────────────────────
+				switchMode(fmac._RfMode.bits.AdslRx ? MODE_ADSL_8682 : MODE_FSK_8682);
 			}else{
 				switchMode(MODE_FSK);
 			}
@@ -1068,7 +1085,7 @@ void FanetMac::handleTxLegacy()
 		}
 		radio.startReceive();		
 		#if TX_DEBUG > 0
-		Serial.printf("ppsCount=%d,leg_Tx=%d\n",ppsCount,micros()-tStart);
+		Serial.printf("ppsCount=%d,leg_Tx=%d\\n",ppsCount,micros()-tStart);
 		#endif
 		if (bSend8682){
 		  legacy_next_tx = tMillis + uint32_t(random(LEGACY_8684_BEGIN,LEGACY_8684_END - LEGACY_SEND_TIME));

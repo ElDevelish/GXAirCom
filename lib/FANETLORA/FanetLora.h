@@ -2,9 +2,9 @@
  * @file FanetLora.h
  *
  * ADS-L M-Band additions in feature/adsl-protocol:
- *   - createAdsl() override of Fapp::createAdsl()
- *   - setAdslEnabled() / isAdslEnabled()
- *   - adslTxCount status counter
+ * - createAdsl() override of Fapp::createAdsl()
+ * - setAdslEnabled() / isAdslEnabled()
+ * - adslTxCount status counter
  */
 
 #ifndef __FANETLORA_H__
@@ -316,7 +316,7 @@ public:
 
   /**
    * @brief Enable or disable ADS-L M-Band transmission.
-   *        When disabled, createAdsl() always returns false.
+   * When disabled, createAdsl() always returns false.
    */
   void setAdslEnabled(bool enabled) { _adslEnabled = enabled; }
 

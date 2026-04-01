@@ -865,6 +865,21 @@ int16_t LoRaClass::switchFSK(uint32_t frequency){
   //log_i("FSK-Mode On %d",micros()-tBegin);
   return 0;
 }
+/**
+ * @brief Enable/Disable Manchester encoding on the SX1276.
+ * Applied to the RegPacketConfig1 register (0x30).
+ * bit 5 = Manchester encoding.
+ */
+void LoRaClass::setManchesterEncoding(bool enable) {
+    // idle() ensures the chip is in Standby mode before register change
+    idle(); 
+    uint8_t reg = radio.SPIgetRegValue(0x30);
+    if (enable) 
+        reg |=  0x20; 
+    else        
+        reg &= ~0x20;
+    radio.SPIsetRegValue(0x30, reg);
+}
 
 bool LoRaClass::isFskMode(void){
   return _fskMode;
