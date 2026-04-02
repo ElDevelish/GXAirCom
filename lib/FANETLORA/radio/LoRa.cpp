@@ -871,16 +871,18 @@ int16_t LoRaClass::switchFSK(uint32_t frequency){
  * bit 5 = Manchester encoding.
  */
 void LoRaClass::setManchesterEncoding(bool enable) {
-    // idle() ensures the chip is in Standby mode before register change
-    idle(); 
-    uint8_t reg = radio.SPIgetRegValue(0x30);
+    // SX1276 RegPacketConfig1 (0x30), bit 5 = Manchester encoding
+    uint8_t reg;
+    // Die Library erwartet: (Adresse, Ziel-Variable, Anzahl Bytes)
+    readRegister(0x30, &reg, 1); 
+    
     if (enable) 
-        reg |=  0x20; 
+        reg |=  0x20;
     else        
         reg &= ~0x20;
-    radio.SPIsetRegValue(0x30, reg);
+        
+    writeRegister(0x30, &reg, 1);
 }
-
 bool LoRaClass::isFskMode(void){
   return _fskMode;
 }
