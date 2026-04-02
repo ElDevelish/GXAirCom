@@ -299,7 +299,7 @@ public:
   bool bInternetGateway = false;
 
         /* device -> air */
-        bool is_broadcast_ready(int num_neighbors);
+        bool is_broadcast_ready(int num_neighbours);
         void broadcast_successful(int type);
   bool createLegacy(uint8_t *buffer);
 
