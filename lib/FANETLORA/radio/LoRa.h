@@ -226,7 +226,7 @@ public:
   int16_t setCodingRate(uint8_t cr);
   int16_t transmit(uint8_t* data, size_t len);
   bool isRxMessage();
-  int16_t switchFSK(uint32_t frequency);
+  int16_t switchFSK(uint32_t frequency, uint8_t payloadLen = 54);
   int16_t switchLORA(uint32_t frequency,uint16_t loraBandwidth);
   float get_airlimit(void);
   bool isFskMode(void);
@@ -289,7 +289,7 @@ private:
   float getSNR();
   int16_t sx1262SetDioIrqParams(uint16_t irqMask, uint16_t dio1Mask, uint16_t dio2Mask = SX126X_IRQ_NONE, uint16_t dio3Mask = SX126X_IRQ_NONE);
   int16_t sx1262SetBufferBaseAddress(uint8_t txBaseAddress = 0x00, uint8_t rxBaseAddress = 0x00);
-  int16_t sx1262SetPacketParam(bool bReceive);
+  int16_t sx1262SetPacketParam(bool bReceive, uint8_t payloadLen = 54);
   int16_t sx1262ReadData(uint8_t* buffer, size_t len);
   uint16_t sx1262ReadIrQ();
   void sx1262SetCmdTx();  
@@ -305,7 +305,7 @@ private:
   int sx_channel_free4tx();
   void configChannel (uint32_t frequency);
   void sx1276_setPower(int8_t power);
-  int16_t sx1276SetPacketParam(bool bReceive);
+  int16_t sx1276SetPacketParam(bool bReceive, uint8_t payloadLen);
   bool calibrated = false;
 
 };

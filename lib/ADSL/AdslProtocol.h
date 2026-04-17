@@ -40,6 +40,7 @@
 #define ADSL_ICONSPICUITY_SIZE  15            ///< 117 payload bits → 15 bytes
 #define ADSL_CRC_SIZE           2             ///< CRC-16
 
+
 /// Total bytes covered by CRC (excludes CRC itself but includes length byte)
 #define ADSL_CRC_COVER_SIZE     (ADSL_LEN_FIELD_SIZE + ADSL_NET_HDR_SIZE + \
                                  ADSL_PRES_HDR_SIZE + ADSL_ICONSPICUITY_SIZE)
@@ -61,6 +62,9 @@
 
 /// Transmission interval [ms] — spec mandates alternation each TX
 #define ADSL_TX_INTERVAL_MS     4000
+
+extern uint32_t adsl_rx_count;
+extern uint32_t adsl_tx_count;
 
 // ────────────────────────────────────────────────────────────────────────────
 // ADS-L Aircraft Category  (spec section G.1.3, 5-bit field)
@@ -184,6 +188,9 @@ uint16_t adsl_crc16(const uint8_t *data, int len);
  * @param address   24-bit source address used as LFSR seed.
  */
 void adsl_scramble(uint8_t *buf, int len, uint32_t address);
+
+// Software Manchester Encoder
+void manchester_encode(const uint8_t *in, uint8_t *out, int in_len);
 
 /**
  * @brief Map a FANET aircraft_t to the nearest ADS-L aircraft category.

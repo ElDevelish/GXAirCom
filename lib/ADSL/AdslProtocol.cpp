@@ -9,6 +9,9 @@
 #include "AdslProtocol.h"
 #include <string.h>
 
+uint32_t adsl_rx_count = 0;
+uint32_t adsl_tx_count = 0;
+
 // ────────────────────────────────────────────────────────────────────────────
 // Internal bit-packing helpers
 // ────────────────────────────────────────────────────────────────────────────
@@ -214,6 +217,27 @@ static void decode_iconspicuity(const uint8_t *payload, adsl_iconspicuity_t *d) 
     d->vel_accuracy     = (uint8_t)unpack_bits(payload, 114, 3);
 }
 
+void manchester_encode(const uint8_t *in, uint8_t *out, int in_len) {
+    for (int i = 0; i < in_len; i++) {
+        uint8_t in_byte = in[i];
+        uint16_t out_word = 0;
+        
+        // Encode each bit of the byte
+        for (int b = 7; b >= 0; b--) {
+            out_word <<= 2;
+            if (in_byte & (1 << b)) {
+                out_word |= 0b10; // '1' becomes '10'
+            } else {
+                out_word |= 0b01; // '0' becomes '01'
+            }
+        }
+        
+        // Store the 16-bit encoded word as two bytes
+        out[i * 2] = (out_word >> 8) & 0xFF;
+        out[i * 2 + 1] = out_word & 0xFF;
+    }
+}
+
 // ────────────────────────────────────────────────────────────────────────────
 // Public: Full packet encoder
 // ────────────────────────────────────────────────────────────────────────────
@@ -245,7 +269,7 @@ bool adsl_encode_packet(uint8_t *buf, const adsl_iconspicuity_t *data) {
     uint16_t crc = adsl_crc16(buf, ADSL_CRC_COVER_SIZE);
     buf[ADSL_CRC_COVER_SIZE]     = (uint8_t)(crc >> 8);
     buf[ADSL_CRC_COVER_SIZE + 1] = (uint8_t)(crc & 0xFFu);
-
+    adsl_tx_count++;
     return true;
 }
 
@@ -275,6 +299,6 @@ bool adsl_decode_packet(const uint8_t *buf, int len, adsl_iconspicuity_t *data) 
     data->privacy_mode = (tmp[4] & 0x01u) != 0;
 
     decode_iconspicuity(&tmp[5], data);
-
+    adsl_rx_count++; // Increment on valid received packet
     return true;
 }

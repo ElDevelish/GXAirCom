@@ -26,6 +26,7 @@
 
 // ── ADS-L NEU ────────────────────────────────────────────────────────────────
 #include "../ADSL/AdslProtocol.h"
+#include "manchester.h"
 // ─────────────────────────────────────────────────────────────────────────────
 
 int serialize_legacyTracking(ufo_t *Data,uint8_t*& buffer);
@@ -229,6 +230,19 @@ void FanetMac::frameReceived(int length)
 		}
 		return;
 	}
+	if (_actMode != MODE_LORA && num_received > 30) {
+      num_received = num_received / 2; 
+  }
+	// --- RAW RX DEBUG DUMP ---
+  // ==========================================================
+  if (_actMode != MODE_LORA && num_received >= 26) {
+      char hexDump[256];
+      int pos = sprintf(hexDump, "RAW RX (%d bytes): ", num_received);
+      for(int i = 0; i < num_received && i < 64; i++) {
+          pos += sprintf(hexDump + pos, "%02X ", rx_frame[i]);
+      }
+      Serial.println(hexDump);
+  }
 	int rssi = radio.getRSSI();
 	int snr = 0;	
 	snr = rssi + 120;
@@ -273,24 +287,59 @@ void FanetMac::frameReceived(int length)
 		}
 		#endif
 
-		// ── ADS-L NEU: Rx 27 byte check ─────────────────────────────────────
-		if (num_received == 27 && _RfMode.bits.AdslRx) {
+		// ── ADS-L NEU: Rx 27 byte check + full tracking data extraction ────────
+		bool decoded = false;
+    if (num_received >= 27 && _RfMode.bits.AdslRx) {
 			adsl_iconspicuity_t adslData;
 			if (adsl_decode_packet(rx_frame, num_received, &adslData)) {
+				// === Extract full tracking data for display ===
+				trackingData tData;
+				memset(&tData, 0, sizeof(trackingData));
+				
+				// Address extraction
+				uint32_t devId = adslData.address & 0x00FFFFFF;
+				tData.devId = devId;
+				
+				// Position
+				tData.lat = adslData.latitude;
+				tData.lon = adslData.longitude;
+				tData.altitude = adslData.altitude_wgs84_m;
+				
+				// Kinematics (convert to standard units)
+				tData.speed = adslData.speed_ms * 3.6f;  // m/s to km/h
+				tData.climb = adslData.vertical_rate_ms;  // already in m/s
+				tData.heading = adslData.track_deg;
+				
+				// Status & Quality
+				tData.aircraftType = adsl_category_from_fanet(adslData.aircraft_category);
+				tData.type = 0x11;  // Airborne tracking (ADS-L always airborne-capable)
+				tData.rssi = rssi;
+				tData.addressType = 0x84;  // Distinct ADS-L marker (134 decimal)
+				
+				// Add to neighbours tracking
+				myApp->fmac._pFanetLora->insertDataToNeighbour(devId, &tData);
+				
+				// Also create legacy Frame for compatibility
 				frm = new Frame();
 				frm->src.manufacturer = (adslData.address >> 16) & 0xFF;
 				frm->src.id = adslData.address & 0xFFFF;
 				frm->altitude = (int32_t)adslData.altitude_wgs84_m;
-				frm->type = 1; // map to standard tracking
-				frm->AddressType = 2 + 0x80;
+				frm->type = 1; // standard tracking
+				frm->AddressType = 0x84;  // ADS-L marker
 				frm->timeStamp = now();
 				rxFntCount++;
+				decoded = true;
+				
+				#if TX_DEBUG > 0
+				log_i("ADS-L RX: id=%06X lat=%.6f lon=%.6f alt=%.1f spd=%.1f clb=%.2f hdg=%.0f rssi=%d",
+				      devId, tData.lat, tData.lon, tData.altitude, tData.speed, tData.climb, tData.heading, rssi);
+				#endif
 			} else {
-				return;
+				Serial.println(">>> Not ADS-L (or CRC failed). Falling through to FLARM...");
 			}
 		} 
 		// ── Legacy FLARM Rx 26 byte check ───────────────────────────────────
-		else if (num_received == 26) {
+		if (!decoded && num_received >= 26) {
 			#if RX_DEBUG > 0
 				static uint32_t tmax = 0;
 				static uint32_t tmin = 1000;
@@ -401,9 +450,9 @@ void FanetMac::frameReceived(int length)
 			}else{
 				return;
 			}
-		} else {
-			return;
-		}
+		} if (!decoded) {
+      return;
+    }
   }else{
     frm = new Frame(num_received, rx_frame);
 		frm->timeStamp = uint32_t(now());
@@ -508,16 +557,16 @@ void FanetMac::switchMode(uint8_t mode,bool bStartReceive){
 	}else if (mode == MODE_ADSL_8682){
 		uint32_t adslFreq = (uint32_t)ADSL_FREQ_MBAND_1 + (uint32_t)_frequencyCorrection;
 		actflarmFreq = adslFreq;
-		radio.switchFSK(adslFreq);
-		radio.setManchesterEncoding(true);   // Manchester ON for ADS-L
+		radio.switchFSK(adslFreq, 54);
+		//radio.setManchesterEncoding(true);   // Manchester ON for ADS-L
 		#if TX_DEBUG > 0
 		log_i("ADS-L: switchMode ADSL_8682 freq=%lu", adslFreq);
 		#endif
 	}else if (mode == MODE_ADSL_8684){
 		uint32_t adslFreq = (uint32_t)ADSL_FREQ_MBAND_2 + (uint32_t)_frequencyCorrection;
 		actflarmFreq = adslFreq;
-		radio.switchFSK(adslFreq);
-		radio.setManchesterEncoding(true);   // Manchester ON for ADS-L
+		radio.switchFSK(adslFreq, 54);
+		//radio.setManchesterEncoding(true);   // Manchester ON for ADS-L
 		#if TX_DEBUG > 0
 		log_i("ADS-L: switchMode ADSL_8684 freq=%lu", adslFreq);
 		#endif
@@ -568,58 +617,67 @@ void FanetMac::switchMode(uint8_t mode,bool bStartReceive){
  */
 void FanetMac::handleTxAdsl()
 {
-	// Guard: ADS-L TX bit not set in RFMode
-	if (!_RfMode.bits.AdslTx) return;
+  static uint8_t ppsCount = 0;
 
-	// Guard: no app
-	if (!myApp) return;
+  if (!_RfMode.bits.AdslTx || !myApp || !fmac.bHasGPS) return;
 
-	// Guard: transmit interval not yet elapsed
-	if ((millis() - _adsl_last_tx) < ADSL_TX_INTERVAL_MS) return;
+  // --- PHASE 1: SCHEDULING ---
+  if (adsl_next_tx == 0) {
+    if ((millis() - _adsl_last_tx) >= ADSL_TX_INTERVAL_MS) {
+      // Schedule exactly once per PPS cycle
+      if (ppsCount != _ppsCount) {
+        ppsCount = _ppsCount;
+        
+        memset(_adslBuffer, 0, sizeof(_adslBuffer));
+        if (myApp->createAdsl(_adslBuffer, _adslFreqToggle)) {
+          // Fire exactly in the dead-air gap between FLARM windows
+          adsl_next_tx = _ppsMillis + 830; 
+        } else {
+          _adsl_last_tx = millis(); // Retry later if no GPS fix
+        }
+      }
+    }
+  } 
+  // --- PHASE 2: EXECUTION ---
+  else if (millis() >= adsl_next_tx) {
+    uint8_t oldMode = _actMode;
 
-	// Ask application layer to fill the ADS-L packet buffer
-	memset(_adslBuffer, 0, sizeof(_adslBuffer));
-	if (!myApp->createAdsl(_adslBuffer, _adslFreqToggle)) {
-		// Data not yet valid (no GPS fix, etc.) — still update timer so we
-		// try again after the next interval rather than hammering every tick.
-		_adsl_last_tx = millis();
-		return;
-	}
+    if (_adslFreqToggle) {
+      switchMode(MODE_ADSL_8684, false);
+    } else {
+      switchMode(MODE_ADSL_8682, false);
+    }
 
-	// Remember which mode to restore after TX
-	uint8_t oldMode = _actMode;
+    // --- NEW: Software Manchester Encoding ---
+    // Takes 27 bytes from _adslBuffer and writes 54 bytes into _adslEncodedBuffer
+    manchester_encode(_adslBuffer, _adslEncodedBuffer, ADSL_PACKET_SIZE);
+		// --- TX DEBUG DUMP: ADD THIS BLOCK ---
+    // Dump the pure 27-byte ADS-L payload
+    char txDump[256];
+    
+		for (int i = 0; i < ADSL_PACKET_SIZE * 2; i++){            
+        _adslEncodedBuffer[i] = ManchesterEncode[(_adslBuffer[i>>1] >> 4) & 0x0F];
+        _adslEncodedBuffer[i+1] = ManchesterEncode[(_adslBuffer[i>>1]) & 0x0F];
+        i++;
+    }
+    // Transmit the 54-byte encoded packet!
+    int16_t txState = radio.transmit(_adslEncodedBuffer, ADSL_PACKET_SIZE * 2);
+    
+    if (txState == ERR_NONE) {
+      txAdslCount++; // Internal MAC counter
+    } else {
+      log_e("ADS-L TX error: code=%d", txState);
+    }
 
-	// Switch to the correct ADS-L frequency
-	if (_adslFreqToggle) {
-		switchMode(MODE_ADSL_8684, false);   // 868.4 MHz
-	} else {
-		switchMode(MODE_ADSL_8682, false);   // 868.2 MHz
-	}
+    _adslFreqToggle = !_adslFreqToggle;
+    _adsl_last_tx = millis();
+    adsl_next_tx = 0;
 
-	// Transmit the pre-built raw packet (ADSL_PACKET_SIZE = 27 bytes)
-	int16_t txState = radio.transmit(_adslBuffer, ADSL_PACKET_SIZE);
-	if (txState == ERR_NONE) {
-		txAdslCount++;
-		#if TX_DEBUG > 0
-		log_i("ADS-L TX OK: freq=%s toggle=%d count=%d",
-		      _adslFreqToggle ? "868.4MHz" : "868.2MHz",
-		      (int)_adslFreqToggle, txAdslCount);
-		#endif
-	} else {
-		log_e("ADS-L TX error: code=%d", txState);
-	}
-
-	// Toggle frequency for next transmission (spec requirement: alternate each TX)
-	_adslFreqToggle = !_adslFreqToggle;
-	_adsl_last_tx = millis();
-
-	// Restore previous radio mode and resume receive
-	if (oldMode != _actMode) {
-		// Disable Manchester after ADS-L TX before returning to FLARM/LoRa
-		radio.setManchesterEncoding(false);
-		switchMode(oldMode, false);
-	}
-	radio.startReceive();
+    if (oldMode != _actMode) {
+      switchMode(oldMode, false);
+    }
+    radio.startReceive();
+  }
 }
 // ─────────────────────────────────────────────────────────────────────────────
 

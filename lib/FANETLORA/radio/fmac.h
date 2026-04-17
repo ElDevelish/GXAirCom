@@ -282,11 +282,13 @@ private:
 
         void sendUdpData(const uint8_t *buffer,int len);
         uint32_t long legacy_next_tx = 0;
+        uint32_t long adsl_next_tx = 0;
         uint8_t FlarmBuffer [26];
 
         // ── ADS-L state ──────────────────────────────────────────────────────
         /// Buffer for one outbound ADS-L packet (ADSL_PACKET_SIZE = 27 bytes)
         uint8_t  _adslBuffer[32];
+        uint8_t  _adslEncodedBuffer[64]; // Manchester Buffer
         /// Toggle flag: false=868.2 MHz, true=868.4 MHz (alternates each TX)
         bool     _adslFreqToggle = false;
         /// Timestamp of last ADS-L transmission [ms]

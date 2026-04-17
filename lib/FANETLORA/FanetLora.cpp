@@ -285,7 +285,6 @@ int16_t FanetLora::getneighbourIndex(uint32_t devId,bool getEmptyEntry){
     if (neighbours[i].devId == devId){
       return i; //found entry
     }
-
     if ((neighbours[i].devId == 0) && (iRet < 0)){
       iRet = i; //found empty one
     }
