@@ -231,6 +231,7 @@ public:
   float get_airlimit(void);
   bool isFskMode(void);
   void setManchesterEncoding(bool enable);
+  void setADSLSyncWord(void);  // Configure ADS-L Manchester-encoded sync word
   
   //int16_t setFrequency(float frequency);
   uint8_t gain = 0; //0 --> auto-gain, 1--> highest gain; 6 --> lowest gain

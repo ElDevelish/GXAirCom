@@ -876,6 +876,40 @@ void LoRaClass::setManchesterEncoding(bool enable) {
         
     writeRegister(0x30, &reg, 1);
 }
+
+/**
+ * @brief Configure ADS-L Manchester-encoded sync word.
+ * ADS-L uses a specific 8-byte Manchester-encoded preamble/sync pattern
+ * as per SRD-860 specification, compatible with SoftRF implementations.
+ */
+void LoRaClass::setADSLSyncWord(void) {
+    // ADS-L Manchester-encoded sync word (8 bytes)
+    // Matches SoftRF implementation for interoperability
+    uint8_t adslSyncWord[8] = {0x55, 0x99, 0x95, 0xA6, 0x9A, 0x65, 0xA9, 0x6A};
+    
+    if (radioType == RADIO_SX1262) {
+        // SX1262: Write sync word to register 0x06C0
+        writeRegister(0x06C0, &adslSyncWord[0], 8);
+        #if TX_DEBUG > 0
+        log_i("ADS-L: setADSLSyncWord (SX1262) configured 8-byte Manchester sync word");
+        #endif
+    } 
+    else if (radioType == RADIO_SX1276) {
+        // SX1276 register 0x27 (RegSyncConfig): set sync word length
+        // Bits 2:0 = syncWordLen-1, Bits 7:6 = preamble type
+        pGxModule->SPIwriteRegister(0x27, 0x30 + 7);  // 8 bytes = length 7
+        
+        // Write sync word to registers 0x28-0x2F (RegSyncValue1-8)
+        for (int i = 0; i < 8; i++) {
+            pGxModule->SPIwriteRegister(0x28 + i, adslSyncWord[i]);
+        }
+        
+        #if TX_DEBUG > 0
+        log_i("ADS-L: setADSLSyncWord (SX1276) configured 8-byte Manchester sync word");
+        #endif
+    }
+}
+
 bool LoRaClass::isFskMode(void){
   return _fskMode;
 }
