@@ -287,55 +287,39 @@ void FanetMac::frameReceived(int length)
 		}
 		#endif
 
-		// ── ADS-L NEU: Rx 27 byte check + full tracking data extraction ────────
+		// ── ADS-L Rx 27 byte check + tracking data extraction ────────────────
 		bool decoded = false;
-    if (num_received >= 27 && _RfMode.bits.AdslRx) {
+		if (num_received >= 27 && _RfMode.bits.AdslRx) {
 			adsl_iconspicuity_t adslData;
 			if (adsl_decode_packet(rx_frame, num_received, &adslData)) {
-				// === Extract full tracking data for display ===
-				trackingData tData;
-				memset(&tData, 0, sizeof(trackingData));
-				
-				// Address extraction
-				uint32_t devId = adslData.address & 0x00FFFFFF;
-				tData.devId = devId;
-				
-				// Position
-				tData.lat = adslData.latitude;
-				tData.lon = adslData.longitude;
-				tData.altitude = adslData.altitude_wgs84_m;
-				
-				// Kinematics (convert to standard units)
-				tData.speed = adslData.speed_ms * 3.6f;  // m/s to km/h
-				tData.climb = adslData.vertical_rate_ms;  // already in m/s
-				tData.heading = adslData.track_deg;
-				
-				// Status & Quality
-				tData.aircraftType = adsl_category_from_fanet(adslData.aircraft_category);
-				tData.type = 0x11;  // Airborne tracking (ADS-L always airborne-capable)
-				tData.rssi = rssi;
-				tData.addressType = 0x84;  // Distinct ADS-L marker (134 decimal)
-				
-				// Add to neighbours tracking
-				myApp->fmac._pFanetLora->insertDataToNeighbour(devId, &tData);
-				
-				// Also create legacy Frame for compatibility
+				// Create Frame for ADS-L data
 				frm = new Frame();
 				frm->src.manufacturer = (adslData.address >> 16) & 0xFF;
 				frm->src.id = adslData.address & 0xFFFF;
-				frm->altitude = (int32_t)adslData.altitude_wgs84_m;
-				frm->type = 1; // standard tracking
-				frm->AddressType = 0x84;  // ADS-L marker
+				frm->altitude = (int32_t)round(adslData.altitude_wgs84_m);
+				frm->type = FRM_TYPE_TRACKING_LEGACY;  // Legacy tracking packet
+				frm->AddressType = 0x84;  // Distinct marker for ADS-L (NOT 0x80=FANET)
+				frm->legacyAircraftType = (uint8_t)adslData.aircraft_category;
+				frm->rssi = rssi;
+				frm->snr = snr;
 				frm->timeStamp = now();
+				
+				// Store decoded ADS-L data in Frame for later processing by FanetLora
+				frm->adslData = new adsl_iconspicuity_t(adslData);
+				
 				rxFntCount++;
 				decoded = true;
 				
-				#if TX_DEBUG > 0
+				#if RX_DEBUG > 1
+				uint32_t devId = adslData.address & 0x00FFFFFF;
 				log_i("ADS-L RX: id=%06X lat=%.6f lon=%.6f alt=%.1f spd=%.1f clb=%.2f hdg=%.0f rssi=%d",
-				      devId, tData.lat, tData.lon, tData.altitude, tData.speed, tData.climb, tData.heading, rssi);
+				      devId, adslData.latitude, adslData.longitude, adslData.altitude_wgs84_m,
+				      adslData.speed_ms * 3.6, adslData.vertical_rate_ms, adslData.track_deg, rssi);
 				#endif
 			} else {
-				Serial.println(">>> Not ADS-L (or CRC failed). Falling through to FLARM...");
+				#if RX_DEBUG > 1
+				Serial.println(">>> Not valid ADS-L (CRC failed). Trying FLARM...");
+				#endif
 			}
 		} 
 		// ── Legacy FLARM Rx 26 byte check ───────────────────────────────────

@@ -78,13 +78,17 @@ public:
 	uint8_t legacyAircraftType = 0;
 	uint8_t AddressType = 0; //address-Type of Flarm
 	uint32_t timeStamp = 0; //unix-Timestamp from Legacy-Msg
+	void *adslData = nullptr;  // For ADS-L frames (nullptr if not ADS-L) - stores adsl_iconspicuity_t*
 
 	int serialize(uint8_t*& buffer);
 
 	Frame(MacAddr addr) : src(addr) { }
 	Frame();
 	Frame(int length, uint8_t *data);				// deserialize packet
-	~Frame() { delete [] payload; }
+	~Frame() { 
+		delete [] payload;
+		if (adslData) delete adslData;  // Clean up ADS-L data if present
+	}
 
 	bool operator== (const Frame& frm) const;
 };

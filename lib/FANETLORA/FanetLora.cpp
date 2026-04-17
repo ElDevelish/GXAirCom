@@ -673,9 +673,19 @@ void FanetLora::handle_frame(Frame *frm){
     actTrackingData.type = 0x11;
     actTrackingData.addressType = frm->AddressType;
     actTrackingData.timestamp = frm->timeStamp;
-    if (getTrackingInfo(frm) == 0){
-      insertDataToNeighbour(actTrackingData.devId,&actTrackingData);
-    }else{
+    
+    // ── Handle ADS-L tracking data (AddressType == 0x84) ────────────────── 
+    if (frm->AddressType == 0x84 && frm->adslData != nullptr) {
+      if (getADSLTrackingInfo(frm, (adsl_iconspicuity_t*)frm->adslData) == 0) {
+        insertDataToNeighbour(actTrackingData.devId, &actTrackingData);
+      } else {
+        bFrameOk = false;
+      }
+    }
+    // ── Handle regular FANET/FLARM tracking data ──────────────────────────
+    else if (getTrackingInfo(frm) == 0) {
+      insertDataToNeighbour(actTrackingData.devId, &actTrackingData);
+    } else {
       bFrameOk = false;
     }
 
@@ -1117,6 +1127,31 @@ int8_t FanetLora::getTrackingInfo(Frame *frm){
     actTrackingData.heading = float(frm->payload[index]) * 360 / 255;
     index++;
     if (actTrackingData.heading  < 0) actTrackingData.heading += 360.0;
+    newData = true;
+    return 0;
+}
+
+// ── ADS-L Tracking Data Extraction ────────────────────────────────────────────
+// Converts decoded ADS-L data into FANET tracking format for neighbours update
+int8_t FanetLora::getADSLTrackingInfo(Frame *frm, adsl_iconspicuity_t *adslData) {
+    if (!adslData) return -1;
+    
+    // Populate tracking data from ADS-L structure
+    actTrackingData.lat = adslData->latitude;
+    actTrackingData.lon = adslData->longitude;
+    actTrackingData.altitude = (uint16_t)round(adslData->altitude_wgs84_m);
+    
+    // Kinematics conversion: m/s → km/h for speed, keep climb in m/s
+    actTrackingData.speed = adslData->speed_ms * 3.6f;  // m/s to km/h
+    actTrackingData.climb = adslData->vertical_rate_ms; // m/s
+    actTrackingData.heading = adslData->track_deg;
+    
+    // Aircraft type mapping
+    actTrackingData.aircraftType = (aircraft_t)(0x80 + adslData->aircraft_category);
+    
+    // Frame metadata already set in FanetLora::handle_frame
+    // (devId, rssi, snr, type, addressType, timestamp all pre-populated)
+    
     newData = true;
     return 0;
 }

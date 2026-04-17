@@ -358,6 +358,7 @@ private:
   weatherData lastWeatherData;
   bool newWData = false;
   int8_t getTrackingInfo(Frame *frm);
+  int8_t getADSLTrackingInfo(Frame *frm, adsl_iconspicuity_t *adslData);
   int8_t getGroundTrackingInfo(uint8_t *buffer,uint16_t length);
   int8_t getWeatherinfo(uint8_t *buffer,uint16_t length);
   float getSpeedFromByte(uint8_t speed);
