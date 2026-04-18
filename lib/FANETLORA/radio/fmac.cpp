@@ -538,7 +538,7 @@ void FanetMac::switchMode(uint8_t mode,bool bStartReceive){
 	}else if (mode == MODE_ADSL_8682){
 		uint32_t adslFreq = (uint32_t)ADSL_FREQ_MBAND_1 + (uint32_t)_frequencyCorrection;
 		actflarmFreq = adslFreq;
-		radio.switchFSK(adslFreq, 54);
+		radio.switchFSK(adslFreq, 50);
 		radio.setADSLSyncWord();           // Configure ADS-L Manchester sync word
 		#if TX_DEBUG > 0
 		log_i("ADS-L: switchMode ADSL_8682 freq=%lu", adslFreq);
@@ -546,7 +546,7 @@ void FanetMac::switchMode(uint8_t mode,bool bStartReceive){
 	}else if (mode == MODE_ADSL_8684){
 		uint32_t adslFreq = (uint32_t)ADSL_FREQ_MBAND_2 + (uint32_t)_frequencyCorrection;
 		actflarmFreq = adslFreq;
-		radio.switchFSK(adslFreq, 54);
+		radio.switchFSK(adslFreq, 50);
 		radio.setADSLSyncWord();           // Configure ADS-L Manchester sync word
 		#if TX_DEBUG > 0
 		log_i("ADS-L: switchMode ADSL_8684 freq=%lu", adslFreq);

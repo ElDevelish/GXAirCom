@@ -881,33 +881,33 @@ void LoRaClass::setManchesterEncoding(bool enable) {
 
 /**
  * @brief Configure ADS-L Manchester-encoded sync word.
- * ADS-L uses a specific 8-byte Manchester-encoded preamble/sync pattern
- * as per SRD-860 specification, compatible with SoftRF implementations.
+ * 6-byte pattern = Manchester(0xF5 0x72 0x4B), compatible with OpenACE and SoftRF.
+ * The 8th byte of the on-air frame (Length=0x18) is left as payload, not sync.
  */
 void LoRaClass::setADSLSyncWord(void) {
-    // ADS-L Manchester-encoded sync word (8 bytes)
-    // Matches SoftRF implementation for interoperability
-    uint8_t adslSyncWord[8] = {0x55, 0x99, 0x95, 0xA6, 0x9A, 0x65, 0xA9, 0x6A};
-    
+    // ADS-L sync word: 6-byte Manchester encoding of raw bytes 0xF5 0x72 0x4B
+    // Matches OpenACE/SoftRF on-air pattern for interoperability
+    uint8_t adslSyncWord[6] = {0x55, 0x99, 0x95, 0xA6, 0x9A, 0x65};
+
     if (radioType == RADIO_SX1262) {
-        // SX1262: Write sync word to register 0x06C0
-        writeRegister(0x06C0, &adslSyncWord[0], 8);
+        // SX1262: SetPacketParams (sent by switchFSK) already configured 48-bit sync length.
+        // Just overwrite the sync word register with our 6-byte ADS-L pattern.
+        writeRegister(0x06C0, &adslSyncWord[0], 6);
         #if TX_DEBUG > 0
-        log_i("ADS-L: setADSLSyncWord (SX1262) configured 8-byte Manchester sync word");
+        log_i("ADS-L: setADSLSyncWord (SX1262) configured 6-byte Manchester sync word");
         #endif
-    } 
+    }
     else if (radioType == RADIO_SX1276) {
-        // SX1276 register 0x27 (RegSyncConfig): set sync word length
-        // Bits 2:0 = syncWordLen-1, Bits 7:6 = preamble type
-        pGxModule->SPIwriteRegister(0x27, 0x30 + 7);  // 8 bytes = length 7
-        
-        // Write sync word to registers 0x28-0x2F (RegSyncValue1-8)
-        for (int i = 0; i < 8; i++) {
+        // RegSyncConfig (0x27): preamble polarity 0x55, SyncOn, SyncSize=6 → 0x30+5=0x35
+        pGxModule->SPIwriteRegister(0x27, 0x30 + 5);
+
+        // Write sync word to RegSyncValue1-6 (0x28-0x2D)
+        for (int i = 0; i < 6; i++) {
             pGxModule->SPIwriteRegister(0x28 + i, adslSyncWord[i]);
         }
-        
+
         #if TX_DEBUG > 0
-        log_i("ADS-L: setADSLSyncWord (SX1276) configured 8-byte Manchester sync word");
+        log_i("ADS-L: setADSLSyncWord (SX1276) configured 6-byte Manchester sync word");
         #endif
     }
 }
