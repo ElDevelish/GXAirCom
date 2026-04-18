@@ -8,6 +8,8 @@
 #ifndef FANET_RADIO_LIB_FRAME_H_
 #define FANET_RADIO_LIB_FRAME_H_
 
+#include "../../ADSL/AdslProtocol.h"
+
 /*
  * Frame
  */
@@ -78,7 +80,7 @@ public:
 	uint8_t legacyAircraftType = 0;
 	uint8_t AddressType = 0; //address-Type of Flarm
 	uint32_t timeStamp = 0; //unix-Timestamp from Legacy-Msg
-	void *adslData = nullptr;  // For ADS-L frames (nullptr if not ADS-L) - stores adsl_iconspicuity_t*
+	adsl_iconspicuity_t *adslData = nullptr;  // nullptr if frame is not ADS-L
 
 	int serialize(uint8_t*& buffer);
 

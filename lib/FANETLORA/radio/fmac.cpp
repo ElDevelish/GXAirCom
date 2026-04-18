@@ -230,11 +230,7 @@ void FanetMac::frameReceived(int length)
 		}
 		return;
 	}
-	if (_actMode != MODE_LORA && num_received > 30) {
-      num_received = num_received / 2; 
-  }
-	// --- RAW RX DEBUG DUMP ---
-  // ==========================================================
+	#if RX_DEBUG > 1
   if (_actMode != MODE_LORA && num_received >= 26) {
       char hexDump[256];
       int pos = sprintf(hexDump, "RAW RX (%d bytes): ", num_received);
@@ -243,6 +239,7 @@ void FanetMac::frameReceived(int length)
       }
       Serial.println(hexDump);
   }
+  #endif
 	int rssi = radio.getRSSI();
 	int snr = 0;	
 	snr = rssi + 120;
@@ -287,9 +284,9 @@ void FanetMac::frameReceived(int length)
 		}
 		#endif
 
-		// ── ADS-L Rx 27 byte check + tracking data extraction ────────────────
+		// ── ADS-L Rx 25 byte check + tracking data extraction ────────────────
 		bool decoded = false;
-		if (num_received >= 27 && _RfMode.bits.AdslRx) {
+		if (num_received >= 25 && _RfMode.bits.AdslRx) {
 			adsl_iconspicuity_t adslData;
 			if (adsl_decode_packet(rx_frame, num_received, &adslData)) {
 				// Create Frame for ADS-L data
@@ -632,19 +629,15 @@ void FanetMac::handleTxAdsl()
       switchMode(MODE_ADSL_8682, false);
     }
 
-    // --- NEW: Software Manchester Encoding ---
-    // Takes 27 bytes from _adslBuffer and writes 54 bytes into _adslEncodedBuffer
-    manchester_encode(_adslBuffer, _adslEncodedBuffer, ADSL_PACKET_SIZE);
-		// --- TX DEBUG DUMP: ADD THIS BLOCK ---
-    // Dump the pure 27-byte ADS-L payload
-    char txDump[256];
-    
-		for (int i = 0; i < ADSL_PACKET_SIZE * 2; i++){            
-        _adslEncodedBuffer[i] = ManchesterEncode[(_adslBuffer[i>>1] >> 4) & 0x0F];
-        _adslEncodedBuffer[i+1] = ManchesterEncode[(_adslBuffer[i>>1]) & 0x0F];
+    // Software Manchester (G.E. Thomas: 0→10, 1→01) via ManchesterEncode[] LUT;
+    // hardware Manchester stays OFF (RegPacketConfig1 = 0x00 in switchFSK()).
+    // 25 bytes from _adslBuffer → 50 bytes in _adslEncodedBuffer.
+    for (int i = 0; i < ADSL_PACKET_SIZE * 2; i++){
+        _adslEncodedBuffer[i]   = ManchesterEncode[(_adslBuffer[i>>1] >> 4) & 0x0F];
+        _adslEncodedBuffer[i+1] = ManchesterEncode[(_adslBuffer[i>>1])      & 0x0F];
         i++;
     }
-    // Transmit the 54-byte encoded packet!
+    // Transmit the 50-byte encoded packet!
     int16_t txState = radio.transmit(_adslEncodedBuffer, ADSL_PACKET_SIZE * 2);
     
     if (txState == ERR_NONE) {

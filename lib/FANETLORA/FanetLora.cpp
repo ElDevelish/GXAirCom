@@ -676,7 +676,7 @@ void FanetLora::handle_frame(Frame *frm){
     
     // ── Handle ADS-L tracking data (AddressType == 0x84) ────────────────── 
     if (frm->AddressType == 0x84 && frm->adslData != nullptr) {
-      if (getADSLTrackingInfo(frm, (adsl_iconspicuity_t*)frm->adslData) == 0) {
+      if (getADSLTrackingInfo(frm, frm->adslData) == 0) {
         insertDataToNeighbour(actTrackingData.devId, &actTrackingData);
       } else {
         bFrameOk = false;
@@ -853,8 +853,9 @@ bool FanetLora::createAdsl(uint8_t *buffer, bool freqToggle) {
     pkt.vertical_rate_ms = _myData.climb;   // already m/s
     pkt.track_deg        = _myData.heading;
 
-    // ── Timestamp (seconds within 64-second cycle) ──────────────────────────
-    pkt.timestamp_s = (uint8_t)(_myData.timestamp % 64u);
+    // ── Timestamp: quarter-seconds since full UTC hour, mod 60 (spec §G.1) ──
+    pkt.timestamp_qs = (uint8_t)((_myData.timestamp * 4u) % 60u);
+    pkt.amt = ADSL_AMT_FANET;
 
     // ── Flight state ────────────────────────────────────────────────────────
     pkt.flight_state = onGround ? ADSL_STATE_GROUND : ADSL_STATE_AIRBORNE;

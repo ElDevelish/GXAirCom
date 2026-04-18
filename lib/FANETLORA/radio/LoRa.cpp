@@ -515,7 +515,8 @@ int16_t LoRaClass::readData(uint8_t* data, size_t len){
   switch (radioType){
     case RADIO_SX1262:
       if (_fskMode){
-        // Auto-detect if len is the decoded length (26/27) or raw length (52/54)
+        // 'len' is the decoded byte count from getPacketLength() (26 FLARM / 25 ADS-L).
+        // FIFO holds 2× raw bytes (software Manchester). Tolerates callers passing raw.
         size_t raw_len = (len <= 30) ? len * 2 : len;
         
         uint8_t rx_frame[128]; // Safe buffer size
@@ -535,7 +536,8 @@ int16_t LoRaClass::readData(uint8_t* data, size_t len){
       
     case RADIO_SX1276:
       if (_fskMode){
-        // Auto-detect if len is the decoded length (26/27) or raw length (52/54)
+        // 'len' is the decoded byte count from getPacketLength() (26 FLARM / 25 ADS-L).
+        // FIFO holds 2× raw bytes (software Manchester). Tolerates callers passing raw.
         size_t raw_len = (len <= 30) ? len * 2 : len;
         
         uint8_t rx_frame[128]; // Safe buffer size
@@ -809,7 +811,7 @@ int16_t LoRaClass::switchFSK(uint32_t frequency, uint8_t payloadLen){
       pGxModule->SPIwriteRegister(0x22,0x00); //RegRxTimeout3
       pGxModule->SPIwriteRegister(0x23,0x00); //RegRxDelay
       pGxModule->SPIwriteRegister(0x24,0x05); //RegOsc FXOSC/32 FXOSC = 32Mhz --> 1Mhz
-      sx1276SetPacketParam(true, 54);
+      sx1276SetPacketParam(true, 50);
       pGxModule->SPIwriteRegister(0x30,0x00); //RegPacketConfig1 WHITENING_NONE
       pGxModule->SPIwriteRegister(0x31,0x40); //RegPacketConfig2 packet mode
       pGxModule->SPIwriteRegister(0x32, payloadLen); //RegPayloadLength
@@ -1204,7 +1206,7 @@ int16_t LoRaClass::sx1262SetPacketParam(bool bReceive, uint8_t payloadLen){
   data[3] = syncWordLen * 8; // sync word len in Bits, 
   data[4] = 0x00; //addr comp off
   data[5] = 0x00; //fixed len  
-  data[6] = payloadLen; // payload len in Bytes = 52 bytes (2 * (24+2)), includes CRC 
+  data[6] = payloadLen; // payload len in Bytes (FLARM=52, ADS-L=50 after software Manchester); no HW CRC
   // no integrated CRC check (not possible due to manchester encoding)
   data[7] = 0x01; //no CRC
   data[8] = 0x00; //no Whitening
@@ -1240,7 +1242,7 @@ int16_t LoRaClass::startReceive(){
         sx1262SetBufferBaseAddress();
         data[0] = 0x00;
         SPIwriteCommand(0x8A, data, 1); //set Modem to GFSK
-        sx1262SetPacketParam(true, 54);
+        sx1262SetPacketParam(true, 50);
       }
       
       //set IRQ to RX-Done
@@ -1276,7 +1278,7 @@ int16_t LoRaClass::startReceive(){
             }
             bCalibrated = true;
           }
-          sx1276SetPacketParam(true, 54);
+          sx1276SetPacketParam(true, 50);
           pGxModule->SPIsetRegValue(0x40, 0x00, 7, 6); //REG_DIO_MAPPING_1 --> DIO0_PACK_PAYLOAD_READY
           pGxModule->SPIwriteRegister(0x3E, 0b11111111); //REG_IRQ_FLAGS_1
           pGxModule->SPIwriteRegister(0x3F, 0b11111111); //REG_IRQ_FLAGS_2
@@ -1319,9 +1321,9 @@ int16_t LoRaClass::startReceive(){
 }
 
 size_t LoRaClass::getPacketLength(){
-  // If we are in FSK mode, we are running Fixed Length 54-byte raw / 27-byte decoded.
-  // We return 27 so the Smart Router in fmac.cpp gets the full payload!
-  if (_fskMode) return 27; 
+  // If we are in FSK mode, we are running Fixed Length 50-byte raw / 25-byte decoded.
+  // We return 25 so the Smart Router in fmac.cpp gets the full payload!
+  if (_fskMode) return 25;
   
   size_t tRet = 0;
   switch (radioType){
@@ -1682,10 +1684,10 @@ int16_t LoRaClass::transmit(uint8_t* data, size_t len){
       actual_tx_buffer = tx_frame;
       actual_tx_len = 52;
     } 
-    else if (len == 54) {
-      // It's ADS-L! Pass the pristine 54 bytes straight to the radio.
+    else if (len == 50) {
+      // It's ADS-L! Pass the pristine 50 bytes straight to the radio.
       actual_tx_buffer = data;
-      actual_tx_len = 54;
+      actual_tx_len = 50;
     }
     else {
       return -1; 
