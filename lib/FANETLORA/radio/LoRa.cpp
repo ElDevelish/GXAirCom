@@ -1452,6 +1452,7 @@ int16_t LoRaClass::sx1262Transmit(uint8_t* buffer, size_t len, uint8_t addr){
   if(_fskMode) {
     // calculate timeout (500% of expected time-on-air)
     sx1262SetPacketParam(false, len); //set packet-params and syncword for transmitting
+    if (len == 50) setADSLSyncWord(); // ADS-L TX: override FLARM sync with ADS-L 6-byte sync
     timeout = sx1262GetTimeOnAir(len) * 5;
   } else {
     // calculate timeout (150% of expected time-on-air)
@@ -1706,9 +1707,10 @@ int16_t LoRaClass::transmit(uint8_t* data, size_t len){
       }    
     case RADIO_SX1276:
       if (_fskMode){
-          sx1276setOpMode(SX1276_MODE_STANDBY); 
-          sx1276SetPacketParam(false, actual_tx_len); 
-          
+          sx1276setOpMode(SX1276_MODE_STANDBY);
+          sx1276SetPacketParam(false, actual_tx_len);
+          if (actual_tx_len == 50) setADSLSyncWord(); // ADS-L TX: override FLARM sync with ADS-L 6-byte sync
+
           uint32_t timeout = 5000000 + (uint32_t)((((float)(actual_tx_len * 8)) / (_br * 1000.0)) * 5000000.0);
           
           pGxModule->SPIsetRegValue(0x40, 0b00000000, 7, 6); 
