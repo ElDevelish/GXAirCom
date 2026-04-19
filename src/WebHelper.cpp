@@ -283,6 +283,7 @@ void onWebSocketEvent(uint8_t client_num,
           doc["legFrequ"] = fanet.getFlarmFrequency();
           doc["legTx"] = status.legTx;
           doc["legRx"] = status.legRx;
+          doc["adslFrequ"] = String((uint32_t)ADSL_FREQ_MBAND_1) + " / " + String((uint32_t)ADSL_FREQ_MBAND_2);
           doc["adslTx"] = adsl_tx_count;
           doc["adslRx"] = adsl_rx_count;
           doc["tLoop"] = status.tLoop;
