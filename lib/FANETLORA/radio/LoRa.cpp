@@ -880,34 +880,66 @@ void LoRaClass::setManchesterEncoding(bool enable) {
 }
 
 /**
- * @brief Configure ADS-L Manchester-encoded sync word.
- * 6-byte pattern = Manchester(0xF5 0x72 0x4B), compatible with OpenACE and SoftRF.
- * The 8th byte of the on-air frame (Length=0x18) is left as payload, not sync.
+ * @brief Configure ADS-L 8-byte hardware sync word for SX1276/SX1262.
+ *
+ * OFFICIAL SPEC (ADS-L 4 SRD-860 Issue 2, §C.1):
+ *   M-Band sync word = 0x72 0x4B (2 raw bytes), transmitted Manchester-encoded
+ *   = {0x95, 0xA6, 0x9A, 0x65} (4 on-air bytes). Preamble is NOT Manchester-encoded.
+ *   Preamble Part 2 ends with "1001 1001" = 0x99; Part 1 last byte = 0x55.
+ *
+ * IMPLEMENTATION NOTE — INTENTIONAL SPEC DEVIATION (SoftRF interoperability):
+ *   All community implementations extend the hardware sync trigger beyond the
+ *   spec's 4-byte pattern by absorbing preamble tail bytes and/or the first
+ *   payload byte into the radio chip's sync detector:
+ *
+ *   OpenACE (6 bytes): Manchester(0xF5  0x72 0x4B)
+ *     0xF5 = last preamble Part-1 byte; 0x72 0x4B = spec sync word
+ *   SoftRF  (8 bytes): Manchester(0xF5  0x72 0x4B  0x18)
+ *     0x18 = Data Link Header byte (Packet Length = 24 bytes, always constant)
+ *
+ *   We use SoftRF's 8-byte pattern to achieve bidirectional compatibility with
+ *   SoftRF (moshe-braner and lyusupov forks). OpenACE interoperability is
+ *   preserved because OpenACE's 6-byte sync is a prefix of our 8-byte sync;
+ *   OpenACE receivers will still detect our TX (they lock on bytes 1-6 and treat
+ *   Manchester(0x18) as the first two payload bytes, which is the correct value).
+ *
+ * CONSEQUENCE ON FRAME LAYOUT:
+ *   The hardware sync consumes Manchester(0x18), so the FIFO delivers only
+ *   24 bytes (Network Header + ADS-L Data + CRC-24) instead of 25.
+ *   TX must encode buf[1..24] (skip the length byte); RX must prepend 0x18
+ *   before passing the 24-byte FIFO payload to adsl_decode_packet().
  */
 void LoRaClass::setADSLSyncWord(void) {
-    // ADS-L sync word: 6-byte Manchester encoding of raw bytes 0xF5 0x72 0x4B
-    // Matches OpenACE/SoftRF on-air pattern for interoperability
-    uint8_t adslSyncWord[6] = {0x55, 0x99, 0x95, 0xA6, 0x9A, 0x65};
+    // 8-byte on-air trigger: Manchester(0xF5 preamble-tail | 0x72 0x4B spec-sync | 0x18 length)
+    uint8_t adslSyncWord[8] = {0x55, 0x99, 0x95, 0xA6, 0x9A, 0x65, 0xA9, 0x6A};
 
     if (radioType == RADIO_SX1262) {
-        // SX1262: SetPacketParams (sent by switchFSK) already configured 48-bit sync length.
-        // Just overwrite the sync word register with our 6-byte ADS-L pattern.
-        writeRegister(0x06C0, &adslSyncWord[0], 6);
+        // Reissue SetPacketParams with 64-bit sync length and 48-byte payload.
+        // switchFSK() configured 48-bit/6-byte FLARM sync; ADS-L needs 64-bit/8-byte.
+        uint8_t data[9];
+        data[0] = 0x00;  // preamble len MSB
+        data[1] = 0x08;  // preamble len 8 chips (0x55 pattern)
+        data[2] = 0x04;  // 8-bit preamble detector
+        data[3] = 64;    // sync word length = 8 bytes × 8 bits
+        data[4] = 0x00;  // address comparison off
+        data[5] = 0x00;  // fixed length mode
+        data[6] = 48;    // payload = 48 bytes (24 raw × 2 Manchester; length byte in sync)
+        data[7] = 0x01;  // no hardware CRC
+        data[8] = 0x00;  // no whitening
+        SPIwriteCommand(0x8C, &data[0], 9);
+        writeRegister(0x06C0, &adslSyncWord[0], 8);
         #if TX_DEBUG > 0
-        log_i("ADS-L: setADSLSyncWord (SX1262) configured 6-byte Manchester sync word");
+        log_i("ADS-L: setADSLSyncWord (SX1262) 8-byte sync, 48-byte payload");
         #endif
     }
     else if (radioType == RADIO_SX1276) {
-        // RegSyncConfig (0x27): preamble polarity 0x55, SyncOn, SyncSize=6 → 0x30+5=0x35
-        pGxModule->SPIwriteRegister(0x27, 0x30 + 5);
-
-        // Write sync word to RegSyncValue1-6 (0x28-0x2D)
-        for (int i = 0; i < 6; i++) {
+        // RegSyncConfig (0x27): preamble polarity 0x55, SyncOn, SyncSize=8 → 0x30+7=0x37
+        pGxModule->SPIwriteRegister(0x27, 0x30 + 7);
+        for (int i = 0; i < 8; i++) {
             pGxModule->SPIwriteRegister(0x28 + i, adslSyncWord[i]);
         }
-
         #if TX_DEBUG > 0
-        log_i("ADS-L: setADSLSyncWord (SX1276) configured 6-byte Manchester sync word");
+        log_i("ADS-L: setADSLSyncWord (SX1276) 8-byte sync");
         #endif
     }
 }
@@ -1452,7 +1484,7 @@ int16_t LoRaClass::sx1262Transmit(uint8_t* buffer, size_t len, uint8_t addr){
   if(_fskMode) {
     // calculate timeout (500% of expected time-on-air)
     sx1262SetPacketParam(false, len); //set packet-params and syncword for transmitting
-    if (len == 50) setADSLSyncWord(); // ADS-L TX: override FLARM sync with ADS-L 6-byte sync
+    if (len == 48) setADSLSyncWord(); // ADS-L TX: 8-byte sync, length byte in sync, 48-byte payload
     timeout = sx1262GetTimeOnAir(len) * 5;
   } else {
     // calculate timeout (150% of expected time-on-air)
@@ -1685,10 +1717,10 @@ int16_t LoRaClass::transmit(uint8_t* data, size_t len){
       actual_tx_buffer = tx_frame;
       actual_tx_len = 52;
     } 
-    else if (len == 50) {
-      // It's ADS-L! Pass the pristine 50 bytes straight to the radio.
+    else if (len == 48) {
+      // ADS-L: 48-byte pre-encoded Manchester payload (buf[1..24], length byte in 8-byte sync).
       actual_tx_buffer = data;
-      actual_tx_len = 50;
+      actual_tx_len = 48;
     }
     else {
       return -1; 
@@ -1709,7 +1741,7 @@ int16_t LoRaClass::transmit(uint8_t* data, size_t len){
       if (_fskMode){
           sx1276setOpMode(SX1276_MODE_STANDBY);
           sx1276SetPacketParam(false, actual_tx_len);
-          if (actual_tx_len == 50) setADSLSyncWord(); // ADS-L TX: override FLARM sync with ADS-L 6-byte sync
+          if (actual_tx_len == 48) setADSLSyncWord(); // ADS-L TX: 8-byte sync (length byte in sync), 48-byte payload
 
           uint32_t timeout = 5000000 + (uint32_t)((((float)(actual_tx_len * 8)) / (_br * 1000.0)) * 5000000.0);
           

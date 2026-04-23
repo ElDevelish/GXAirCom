@@ -284,11 +284,18 @@ void FanetMac::frameReceived(int length)
 		}
 		#endif
 
-		// ── ADS-L Rx 25 byte check + tracking data extraction ────────────────
+		// ── ADS-L Rx 24-byte check + tracking data extraction ────────────────
+		// With the 8-byte hardware sync the radio chip strips Manchester(0x18),
+		// so the FIFO delivers 24 bytes (net_header + data + CRC-24).
+		// Reconstruct the full 25-byte packet by prepending the known 0x18 length
+		// byte before passing to adsl_decode_packet().
 		bool decoded = false;
-		if (num_received >= 25 && _RfMode.bits.AdslRx) {
+		if (num_received >= 24 && _RfMode.bits.AdslRx) {
 			adsl_iconspicuity_t adslData;
-			if (adsl_decode_packet(rx_frame, num_received, &adslData)) {
+			uint8_t adsl_full[ADSL_PACKET_SIZE];
+			adsl_full[0] = 0x18; // length byte absorbed by 8-byte sync; restore it
+			memcpy(&adsl_full[1], rx_frame, 24);
+			if (adsl_decode_packet(adsl_full, ADSL_PACKET_SIZE, &adslData)) {
 				// Create Frame for ADS-L data
 				frm = new Frame();
 				frm->src.manufacturer = (adslData.address >> 16) & 0xFF;
@@ -538,7 +545,7 @@ void FanetMac::switchMode(uint8_t mode,bool bStartReceive){
 	}else if (mode == MODE_ADSL_8682){
 		uint32_t adslFreq = (uint32_t)ADSL_FREQ_MBAND_1 + (uint32_t)_frequencyCorrection;
 		actflarmFreq = adslFreq;
-		radio.switchFSK(adslFreq, 50);
+		radio.switchFSK(adslFreq, 48);
 		radio.setADSLSyncWord();           // Configure ADS-L Manchester sync word
 		#if TX_DEBUG > 0
 		log_i("ADS-L: switchMode ADSL_8682 freq=%lu", adslFreq);
@@ -546,7 +553,7 @@ void FanetMac::switchMode(uint8_t mode,bool bStartReceive){
 	}else if (mode == MODE_ADSL_8684){
 		uint32_t adslFreq = (uint32_t)ADSL_FREQ_MBAND_2 + (uint32_t)_frequencyCorrection;
 		actflarmFreq = adslFreq;
-		radio.switchFSK(adslFreq, 50);
+		radio.switchFSK(adslFreq, 48);
 		radio.setADSLSyncWord();           // Configure ADS-L Manchester sync word
 		#if TX_DEBUG > 0
 		log_i("ADS-L: switchMode ADSL_8684 freq=%lu", adslFreq);
@@ -629,16 +636,18 @@ void FanetMac::handleTxAdsl()
       switchMode(MODE_ADSL_8682, false);
     }
 
-    // Software Manchester (G.E. Thomas: 0→10, 1→01) via ManchesterEncode[] LUT;
-    // hardware Manchester stays OFF (RegPacketConfig1 = 0x00 in switchFSK()).
-    // 25 bytes from _adslBuffer → 50 bytes in _adslEncodedBuffer.
-    for (int i = 0; i < ADSL_PACKET_SIZE * 2; i++){
-        _adslEncodedBuffer[i]   = ManchesterEncode[(_adslBuffer[i>>1] >> 4) & 0x0F];
-        _adslEncodedBuffer[i+1] = ManchesterEncode[(_adslBuffer[i>>1])      & 0x0F];
+    // Software Manchester (G.E. Thomas: 0→10, 1→01) via ManchesterEncode[] LUT.
+    // buf[0] = 0x18 (length byte) is absorbed into the 8-byte hardware sync word
+    // (last 2 bytes = Manchester(0x18) = {0xA9, 0x6A}) — matches SoftRF interop.
+    // So encode only buf[1..24] → 48 bytes in _adslEncodedBuffer.
+    for (int i = 0; i < (ADSL_PACKET_SIZE - 1) * 2; i++){
+        int src = 1 + (i >> 1);
+        _adslEncodedBuffer[i]   = ManchesterEncode[(_adslBuffer[src] >> 4) & 0x0F];
+        _adslEncodedBuffer[i+1] = ManchesterEncode[(_adslBuffer[src])      & 0x0F];
         i++;
     }
-    // Transmit the 50-byte encoded packet!
-    int16_t txState = radio.transmit(_adslEncodedBuffer, ADSL_PACKET_SIZE * 2);
+    // Transmit the 48-byte encoded packet (length byte lives in the 8-byte sync).
+    int16_t txState = radio.transmit(_adslEncodedBuffer, (ADSL_PACKET_SIZE - 1) * 2);
     
     if (txState == ERR_NONE) {
       txAdslCount++; // Internal MAC counter
