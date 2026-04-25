@@ -172,8 +172,8 @@ function getRfMode(){
   if (document.getElementById("FntTx").checked) Ret += 2;
   if (document.getElementById("FlarmRx").checked) Ret += 4;
   if (document.getElementById("FlarmTx").checked) Ret += 8;
-  if (document.getElementById("AdslRx") && document.getElementById("AdslRx").checked) Ret |= 0x10;
-  if (document.getElementById("AdslTx") && document.getElementById("AdslTx").checked) Ret |= 0x20;
+  if (document.getElementById("AdslRx") && document.getElementById("AdslRx").checked) Ret |= 0x20;
+  if (document.getElementById("AdslTx") && document.getElementById("AdslTx").checked) Ret |= 0x10;
   return Ret;
 }
 
@@ -326,7 +326,7 @@ function setRfMode(mode){
   }
   e = document.getElementById("AdslRx");
   if (e) {
-    if (mode & 16){ // 16 is 0x10 (Bit 4)
+    if (mode & 32){ // 32 is 0x20 (Bit 5)
       e.checked = true;
     }else{
       e.checked = false;
@@ -334,7 +334,7 @@ function setRfMode(mode){
   }
   e = document.getElementById("AdslTx");
   if (e) {
-    if (mode & 32){ // 32 is 0x20 (Bit 5)
+    if (mode & 16){ // 16 is 0x10 (Bit 4)
       e.checked = true;
     }else{
       e.checked = false;

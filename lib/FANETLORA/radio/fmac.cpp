@@ -435,10 +435,11 @@ void FanetMac::frameReceived(int length)
 				frm->timeStamp = tUnix + tOffset;
 				
 				rxLegCount++;
+				decoded = true;
 			}else{
 				return;
 			}
-		} if (!decoded) {
+		} else if (!decoded) {
       return;
     }
   }else{
