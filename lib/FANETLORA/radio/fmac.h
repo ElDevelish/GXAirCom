@@ -293,6 +293,8 @@ private:
         bool     _adslFreqToggle = false;
         /// Timestamp of last ADS-L transmission [ms]
         unsigned long _adsl_last_tx = 0;
+        /// Timestamp when FLARM 8682 TX completed; ADS-L fires shortly after.
+        uint32_t _flarm8682TxDone = 0;
 
         uint32_t _ppsMillis = 0;
         uint8_t _ppsCount = 0;

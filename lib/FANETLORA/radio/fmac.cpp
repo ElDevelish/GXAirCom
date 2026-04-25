@@ -502,8 +502,9 @@ bool FanetMac::begin(int8_t sck, int8_t miso, int8_t mosi, int8_t ss,int8_t rese
 	randomSeed(millis());
 
 	// ── ADS-L NEU: initialise ADS-L state ──────────────────────────────────
-	_adslFreqToggle = false;
-	_adsl_last_tx   = 0;
+	_adslFreqToggle  = false;
+	_adsl_last_tx    = 0;
+	_flarm8682TxDone = 0;
 	memset(_adslBuffer, 0, sizeof(_adslBuffer));
 	// ─────────────────────────────────────────────────────────────────────────
 	
@@ -613,20 +614,33 @@ void FanetMac::handleTxAdsl()
   // --- PHASE 1: SCHEDULING ---
   if (adsl_next_tx == 0) {
     if ((millis() - _adsl_last_tx) >= ADSL_TX_INTERVAL_MS) {
-      // Schedule exactly once per PPS cycle
-      if (ppsCount != _ppsCount) {
-        ppsCount = _ppsCount;
-        
-        memset(_adslBuffer, 0, sizeof(_adslBuffer));
-        if (myApp->createAdsl(_adslBuffer, _adslFreqToggle)) {
-          // Fire exactly in the dead-air gap between FLARM windows
-          adsl_next_tx = _ppsMillis + 830; 
-        } else {
-          _adsl_last_tx = millis(); // Retry later if no GPS fix
+      if (_RfMode.bits.LegTx) {
+        // FLARM active: fire ~30ms after FLARM 8682 TX so we inherit its random slot.
+        // Each device already picks a random FLARM slot per cycle; ADS-L rides on that.
+        if (_flarm8682TxDone != 0) {
+          memset(_adslBuffer, 0, sizeof(_adslBuffer));
+          if (myApp->createAdsl(_adslBuffer, _adslFreqToggle)) {
+            adsl_next_tx = _flarm8682TxDone + 30;
+          } else {
+            _adsl_last_tx = millis();
+          }
+          _flarm8682TxDone = 0;
+        }
+      } else {
+        // ADS-L only (no FLARM TX): pick a new random slot each PPS cycle,
+        // same logic as FLARM uses for its own window.
+        if (ppsCount != _ppsCount) {
+          ppsCount = _ppsCount;
+          memset(_adslBuffer, 0, sizeof(_adslBuffer));
+          if (myApp->createAdsl(_adslBuffer, _adslFreqToggle)) {
+            adsl_next_tx = _ppsMillis + random(50, 950);
+          } else {
+            _adsl_last_tx = millis();
+          }
         }
       }
     }
-  } 
+  }
   // --- PHASE 2: EXECUTION ---
   else if (millis() >= adsl_next_tx) {
     uint8_t oldMode = _actMode;
@@ -768,9 +782,23 @@ void FanetMac::stateWrapper()
 					fmac.switchMode(MODE_FSK);
 				}
 			}
+		}else if (!fmac._RfMode.bits.FntRx && !fmac._RfMode.bits.LegRx && fmac._RfMode.bits.AdslRx){
+			if (fmac.flarmZone == 1){
+				if (fmac._actMode != MODE_ADSL_8682 && fmac._actMode != MODE_ADSL_8684){
+					if ((millis() - fmac._ppsMillis) >= (LEGACY_8682_BEGIN - LEGACY_RANGE) && (ppsDiff >= 1)){
+						ppsMillis = fmac._ppsMillis;
+						ppsCount = fmac._ppsCount;
+						fmac.switchMode(MODE_ADSL_8682);
+					}
+				}else if (fmac._actMode == MODE_ADSL_8682){
+					if ((millis() - ppsMillis) >= (LEGACY_8684_BEGIN - LEGACY_RANGE)){
+						fmac.switchMode(MODE_ADSL_8684);
+					}
+				}
+			}
 		}else{
 
-		} 
+		}
 	}else{
 		if (fmac.flarmZone == 1){
 			if (fmac._RfMode.bits.FntRx && fmac._RfMode.bits.LegRx){
@@ -790,13 +818,18 @@ void FanetMac::stateWrapper()
 						tSwitch = millis();
 					}
 				}
-			}else if (!fmac._RfMode.bits.FntRx && fmac._RfMode.bits.LegRx){			
+			}else if (!fmac._RfMode.bits.FntRx && fmac._RfMode.bits.LegRx){
 				if ((tAct - tSwitch) >= 1000){
 					if (fmac._actMode != MODE_FSK_8682 && fmac._actMode != MODE_ADSL_8682){
 						fmac.switchMode(fmac._RfMode.bits.AdslRx ? MODE_ADSL_8682 : MODE_FSK_8682);
 					}else{
 						fmac.switchMode(fmac._RfMode.bits.AdslRx ? MODE_ADSL_8684 : MODE_FSK_8684);
 					}
+					tSwitch = tAct;
+				}
+			}else if (!fmac._RfMode.bits.FntRx && !fmac._RfMode.bits.LegRx && fmac._RfMode.bits.AdslRx){
+				if ((tAct - tSwitch) >= 1000){
+					fmac.switchMode(fmac._actMode == MODE_ADSL_8682 ? MODE_ADSL_8684 : MODE_ADSL_8682);
 					tSwitch = tAct;
 				}
 			}
@@ -1044,11 +1077,12 @@ void FanetMac::setRegion(float lat, float lon){
 			switchMode(MODE_LORA);
 		}else if (_RfMode.bits.LegRx){
 			if (flarmZone == 1){
-				// ── ADS-L NEU: Rx logic ──────────────────────────────────────
-				switchMode(fmac._RfMode.bits.AdslRx ? MODE_ADSL_8682 : MODE_FSK_8682);
+				switchMode(_RfMode.bits.AdslRx ? MODE_ADSL_8682 : MODE_FSK_8682);
 			}else{
 				switchMode(MODE_FSK);
 			}
+		}else if (_RfMode.bits.AdslRx && flarmZone == 1){
+			switchMode(MODE_ADSL_8682);
 		}
 	}
 }
@@ -1128,11 +1162,12 @@ void FanetMac::handleTxLegacy()
 		if (_actMode != oldMode){
 			fmac.switchMode(oldMode,false);
 		}
-		radio.startReceive();		
+		radio.startReceive();
 		#if TX_DEBUG > 0
 		Serial.printf("ppsCount=%d,leg_Tx=%d\\n",ppsCount,micros()-tStart);
 		#endif
 		if (bSend8682){
+			_flarm8682TxDone = millis(); // ADS-L uses this to fire just after FLARM 8682
 		  legacy_next_tx = tMillis + uint32_t(random(LEGACY_8684_BEGIN,LEGACY_8684_END - LEGACY_SEND_TIME));
 			bSend8682 = false;
 		}else{
