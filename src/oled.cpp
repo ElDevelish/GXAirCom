@@ -11,6 +11,7 @@ bool Oled::begin(TwoWire *pi2c,int8_t rst,SemaphoreHandle_t *_xMutex){
   xMutex = _xMutex;
   pinRst = rst;
   oldScreenNumber = 0;
+  tLastDisplayActivity = millis();
   if (display == NULL){
     #ifdef SH1106G
     display = new Adafruit_SH1106G(128, 64, pi2c);
@@ -45,14 +46,29 @@ bool Oled::begin(TwoWire *pi2c,int8_t rst,SemaphoreHandle_t *_xMutex){
   display->print(setting.myDevId.c_str());
   display->display();
   delay(1000);
-  if (setting.gs.SreenOption == eScreenOption::ALWAYS_OFF){
+  if (setting.Mode == eMode::AIR_MODULE){
+    if (setting.displayTimeout == eDisplayTimeout::DISPLAY_TIMEOUT_ALWAYS_OFF){
+      PowerOff();
+    }else{
+      display->clearDisplay();
+      display->display();
+    }
+  }else if (setting.gs.SreenOption == eScreenOption::ALWAYS_OFF){
     PowerOff();
   }else{
     display->clearDisplay();
     display->display();
-  }  
+  }
   xSemaphoreGive( *xMutex );
   return true;
+}
+
+void Oled::Wake(void){
+  if (setting.displayTimeout == eDisplayTimeout::DISPLAY_TIMEOUT_ALWAYS_OFF){
+    return;
+  }
+  tLastDisplayActivity = millis();
+  PowerOn();
 }
 
 void Oled::PowerOn(void){
@@ -751,7 +767,29 @@ void Oled::printGSData(uint32_t tAct){
 void Oled::run(void){
   xSemaphoreTake( *xMutex, portMAX_DELAY );
   uint32_t tAct = millis();
-  static uint32_t tDisplay = millis();  
+  static uint32_t tDisplay = millis();
+
+  if ((setting.Mode == eMode::AIR_MODULE) && (setting.displayType != eDisplay::NO_DISPLAY) && (setting.displayTimeout != eDisplayTimeout::DISPLAY_TIMEOUT_ALWAYS_ON) && (setting.displayTimeout != eDisplayTimeout::DISPLAY_TIMEOUT_ALWAYS_OFF) && bDisplayOn) {
+    uint32_t timeoutMs = 0;
+    switch (setting.displayTimeout) {
+      case eDisplayTimeout::DISPLAY_TIMEOUT_1_MIN:
+        timeoutMs = 60000;
+        break;
+      case eDisplayTimeout::DISPLAY_TIMEOUT_2_MIN:
+        timeoutMs = 120000;
+        break;
+      case eDisplayTimeout::DISPLAY_TIMEOUT_5_MIN:
+        timeoutMs = 300000;
+        break;
+      default:
+        timeoutMs = 0;
+        break;
+    }
+    if ((timeoutMs > 0) && ((tAct - tLastDisplayActivity) >= timeoutMs)) {
+      PowerOff();
+    }
+  }
+
   #ifdef GSMODULE
   if (setting.Mode == eMode::GROUND_STATION){
     if (setting.gs.SreenOption == eScreenOption::WEATHER_DATA){

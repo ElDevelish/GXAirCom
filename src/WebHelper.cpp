@@ -338,6 +338,7 @@ void onWebSocketEvent(uint8_t client_num,
           doc["FrqCor"] = setting.FrqCor;
           doc["disp"] = setting.displayType;
           doc["dispRot"] = setting.displayRotation;
+          doc["dispTimeout"] = setting.displayTimeout;
           doc["expwsw"] = setting.bHasExtPowerSw;
           doc["mode"] = setting.Mode;
           doc["type"] = (uint8_t)setting.AircraftType;
@@ -565,6 +566,7 @@ void onWebSocketEvent(uint8_t client_num,
         assignIfExists(root, "FrqCor", setting.FrqCor);
         assignIfExistsCast<eDisplay,uint8_t>(root,"disp",setting.displayType);
         assignIfExists(root, "dispRot", setting.displayRotation);
+        assignIfExists(root, "dispTimeout", setting.displayTimeout);
         assignIfExists(root, "expwsw", setting.bHasExtPowerSw);
         assignIfExists(root, "type", setting.AircraftType);
         assignIfExists(root, "PilotName", setting.PilotName);

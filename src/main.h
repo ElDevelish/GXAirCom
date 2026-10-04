@@ -435,6 +435,7 @@ struct SettingsData{
   eMode Mode; //Air-Module, GS-Station,
   eDisplay displayType;
   uint8_t displayRotation; //displayrotation 0-3;
+  uint8_t displayTimeout; //display timeout for air-module; 0=always on, 1=always off, 2/3/4 = 1/2/5 minutes
   float BattVoltOffs; //offset for Battery-multiplier
   uint8_t minBattPercent;
   uint8_t restartBattPercent;

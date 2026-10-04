@@ -60,6 +60,15 @@ enum eDisplay{
   EINK2_9_V2 = 3
 };
 
+/* Display timeout */
+enum eDisplayTimeout{
+  DISPLAY_TIMEOUT_ALWAYS_ON = 0,
+  DISPLAY_TIMEOUT_ALWAYS_OFF = 1,
+  DISPLAY_TIMEOUT_1_MIN = 2,
+  DISPLAY_TIMEOUT_2_MIN = 3,
+  DISPLAY_TIMEOUT_5_MIN = 4
+};
+
 /* Wifi-Connect-Mode */
 enum eWifiMode{
   CONNECT_NONE = 0,

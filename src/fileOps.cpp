@@ -121,6 +121,7 @@ void load_configFile(SettingsData* pSetting,statusData* pStatus){
   pSetting->screenNumber = preferences.getUChar("SCREEN",0);
   pSetting->displayType = eDisplay(preferences.getUChar("Display",eDisplay::NO_DISPLAY));
   pSetting->displayRotation = preferences.getUChar("DispRot",0);
+  pSetting->displayTimeout = preferences.getUChar("DispTmo",eDisplayTimeout::DISPLAY_TIMEOUT_ALWAYS_ON);
   pSetting->traccarLiveTracking = preferences.getUChar("TRACCAR_LIVE",0);
   pSetting->TraccarSrv = preferences.getString("TRACCAR_SRV","");
   
@@ -300,6 +301,7 @@ void write_configFile(SettingsData* pSetting){
   preferences.putUChar("OGN_LIVE",pSetting->OGNLiveTracking.mode);
   preferences.putUChar("Display",pSetting->displayType);
   preferences.putUChar("DispRot",pSetting->displayRotation);
+  preferences.putUChar("DispTmo",pSetting->displayTimeout);
   preferences.putUChar("TRACCAR_LIVE",pSetting->traccarLiveTracking);
   preferences.putString("TRACCAR_SRV",pSetting->TraccarSrv);
   

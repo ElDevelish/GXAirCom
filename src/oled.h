@@ -30,6 +30,8 @@ public:
   void end(void);
   void run(void); //has to be called cyclic
   void webUpdate(void);
+  void Wake(void);
+  bool isDisplayOn(void) const { return bDisplayOn; }
 
 private:
   
@@ -58,6 +60,7 @@ private:
   #endif
   int8_t pinRst = -1;
   bool bDisplayOn = false;
+  uint32_t tLastDisplayActivity = 0;
   uint8_t oldScreenNumber = 0;
   SemaphoreHandle_t *xMutex;
 };

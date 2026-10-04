@@ -191,6 +191,10 @@ Ogn ogn;
 gxUpdater updater;  
 gxUserLed userled;
 
+#if defined(SSD1306) || defined(SH1106G)
+Oled display;
+#endif
+
 FanetLora::trackingData MyFanetData;  
 
 
@@ -4963,6 +4967,11 @@ void taskStandard(void *pvParameters){
     }
     //check Button 0
     if (sButton[0].state == ace_button::AceButton::kEventClicked){
+      #if defined(SSD1306) || defined(SH1106G)
+      if ((setting.Mode == eMode::AIR_MODULE) && (!display.isDisplayOn())){
+        display.Wake();
+      }
+      #endif
       //log_v("Short Press IRQ");
       setting.screenNumber ++;
       bShowBattPower = true; //show battery-state again
@@ -4986,6 +4995,11 @@ void taskStandard(void *pvParameters){
     sButton[0].state =  0;
     //check Button 1
     if (sButton[1].state == ace_button::AceButton::kEventClicked){
+      #if defined(SSD1306) || defined(SH1106G)
+      if ((setting.Mode == eMode::AIR_MODULE) && (!display.isDisplayOn())){
+        display.Wake();
+      }
+      #endif
       if (status.bMuting){
         status.bMuting = false; //undo muting
       }else{
@@ -5921,7 +5935,6 @@ void taskOled(void *pvParameters){
     vTaskDelete(xHandleOled);
     return;
   }
-  Oled display;
   display.begin(pI2cOne,PinOledRst,&xI2C1Mutex);
   while(1){
     display.run();

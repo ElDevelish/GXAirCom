@@ -68,6 +68,7 @@ function setVis(){
   setvisible("VisGsSsO",(gsPs == GS_POWER_SAFE)?true:false);
 
   setvisible("VisGsScreen",((mode == GROUND_STATION) && (display != NO_DISPLAY))?true:false);
+  setvisible("VisDisplayTimeout",((mode == AIR_MODULE) && (display != NO_DISPLAY))?true:false);
   setvisible("VisOwnWs",(mode == GROUND_STATION)?true:false);
   setvisible("VisAWUS",((mode == GROUND_STATION) && (setView >= SETTING_ADVANCED))?true:false);
   setvisible("VisAWFFNT",((mode == GROUND_STATION) && (setView == SETTING_EXPERT))?true:false);
@@ -614,6 +615,7 @@ getValue(obj,
     "FrqCor",
     "disp",
     "dispRot",
+    "dispTimeout",
     "type",
     "mode",
     "fntMode",
@@ -762,6 +764,7 @@ function sendValues(){
     "FrqCor",
     "disp",
     "dispRot",
+    "dispTimeout",
     "type",
     "mode",
     "fntMode",
@@ -1112,6 +1115,16 @@ function onMessage(evt) {
 <option value="1">90&deg;</option>
 <option value="2">180&deg;</option>
 <option value="3">270&deg;</option>
+</select></td>
+</tr>
+<tr id="VisDisplayTimeout">
+<th>Display Timeout</th>
+<td><select id="dispTimeout">
+<option value="0">Always On</option>
+<option value="1">Always Off</option>
+<option value="2">1 min</option>
+<option value="3">2 min</option>
+<option value="4">5 min</option>
 </select></td>
 </tr>
 <tr>
